@@ -76,7 +76,7 @@ const char *WebAssembly::anyTypeToString(unsigned Type) {
 }
 
 const char *WebAssembly::typeToString(wasm::ValType Type) {
-  return anyTypeToString(static_cast<unsigned>(Type));
+  return anyTypeToString(Type.getKind());
 }
 
 std::string WebAssembly::typeListToString(ArrayRef<wasm::ValType> List) {

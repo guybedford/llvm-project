@@ -277,18 +277,36 @@ struct WasmObjectHeader {
 };
 
 // Subset of types that a value can have
-enum class ValType {
-  I32 = WASM_TYPE_I32,
-  I64 = WASM_TYPE_I64,
-  F32 = WASM_TYPE_F32,
-  F64 = WASM_TYPE_F64,
-  V128 = WASM_TYPE_V128,
-  FUNCREF = WASM_TYPE_FUNCREF,
-  EXTERNREF = WASM_TYPE_EXTERNREF,
-  EXNREF = WASM_TYPE_EXNREF,
-  // Unmodeled value types include ref types with heap types other than
-  // func, extern or exn, and type-specialized funcrefs
-  OTHERREF = 0xff,
+class ValType {
+public:
+  enum Kind : uint8_t {
+    I32 = WASM_TYPE_I32,
+    I64 = WASM_TYPE_I64,
+    F32 = WASM_TYPE_F32,
+    F64 = WASM_TYPE_F64,
+    V128 = WASM_TYPE_V128,
+    FUNCREF = WASM_TYPE_FUNCREF,
+    EXTERNREF = WASM_TYPE_EXTERNREF,
+    EXNREF = WASM_TYPE_EXNREF,
+    // Unmodeled value types include ref types with heap types other than
+    // func, extern or exn, and type-specialized funcrefs
+    OTHERREF = 0xff,
+  };
+
+  ValType() = default;
+  constexpr ValType(Kind K) : K(K) {}
+
+  constexpr Kind getKind() const { return K; }
+
+  friend constexpr bool operator==(ValType LHS, ValType RHS) {
+    return LHS.K == RHS.K;
+  }
+  friend constexpr bool operator!=(ValType LHS, ValType RHS) {
+    return !(LHS == RHS);
+  }
+
+private:
+  Kind K;
 };
 
 struct WasmDylinkImportInfo {

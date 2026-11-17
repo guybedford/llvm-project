@@ -119,7 +119,7 @@ static bool isEmscriptenInvokeName(StringRef Name) {
 // Returns a character that represents the given wasm value type in invoke
 // signatures.
 static char getInvokeSig(wasm::ValType VT) {
-  switch (VT) {
+  switch (VT.getKind()) {
   case wasm::ValType::I32:
     return 'i';
   case wasm::ValType::I64:
