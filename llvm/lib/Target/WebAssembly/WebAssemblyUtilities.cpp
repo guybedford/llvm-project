@@ -216,6 +216,48 @@ MachineSDNode *WebAssembly::getTLSBase(SelectionDAG &DAG, const SDLoc &DL,
   return DAG.getMachineNode(Opcode, DL, PtrVT, Sym);
 }
 
+APInt WebAssembly::encodeFunctionSignature(ArrayRef<wasm::ValType> Returns,
+                                           ArrayRef<wasm::ValType> Params) {
+  auto NParams = Params.size();
+  auto NReturns = Returns.size();
+  auto BitWidth = (NParams + NReturns + 2) * 64;
+  auto Sig = APInt(BitWidth, 0);
+
+  // Annoying special case: if getSignificantBits() <= 64 then InstrEmitter will
+  // emit an Imm instead of a CImm. It simplifies WebAssemblyMCInstLower if we
+  // always emit a CImm. So xor NReturns with 0x7ffffff to ensure
+  // getSignificantBits() > 64
+  Sig |= NReturns ^ 0x7ffffff;
+  for (wasm::ValType Return : Returns) {
+    Sig <<= 64;
+    Sig |= Return.getRawEncoding();
+  }
+  Sig <<= 64;
+  Sig |= NParams;
+  for (wasm::ValType Param : Params) {
+    Sig <<= 64;
+    Sig |= Param.getRawEncoding();
+  }
+  return Sig;
+}
+
+void WebAssembly::decodeFunctionSignature(
+    const APInt &Sig, SmallVectorImpl<wasm::ValType> &Returns,
+    SmallVectorImpl<wasm::ValType> &Params) {
+  // For APInt a word is 64 bits on all architectures, see definition in APInt.h
+  int Idx = Sig.getNumWords();
+  auto GetWord = [&Idx, &Sig]() {
+    Idx--;
+    return Sig.extractBitsAsZExtValue(64, 64 * Idx);
+  };
+  int NReturns = GetWord() ^ 0x7ffffff;
+  for (int I = 0; I < NReturns; I++)
+    Returns.push_back(wasm::ValType::getFromRawEncoding(GetWord()));
+  int NParams = GetWord();
+  for (int I = 0; I < NParams; I++)
+    Params.push_back(wasm::ValType::getFromRawEncoding(GetWord()));
+}
+
 Register WebAssembly::getSwiftAsyncArgReg(const MachineFunction &MF) {
   if (none_of(MF.getFunction().args(), [](const Argument &Arg) {
         return Arg.hasAttribute(Attribute::SwiftAsync);
