@@ -183,8 +183,6 @@ static uint8_t readOpcode(WasmObjectFile::ReadContext &Ctx) {
 
 static wasm::ValType parseValType(WasmObjectFile::ReadContext &Ctx,
                                   uint32_t Code) {
-  // only directly encoded FUNCREF/EXTERNREF/EXNREF are supported
-  // (not ref null func, ref null extern, or ref null exn)
   switch (Code) {
   case wasm::WASM_TYPE_I32:
   case wasm::WASM_TYPE_I64:
@@ -197,9 +195,19 @@ static wasm::ValType parseValType(WasmObjectFile::ReadContext &Ctx,
     return wasm::ValType::Kind(Code);
   }
   if (Code == wasm::WASM_TYPE_NULLABLE || Code == wasm::WASM_TYPE_NONNULLABLE) {
-    /* Discard HeapType */ readVarint64(Ctx);
+    // Abstract heap types are encoded as negative numbers whose single-byte
+    // SLEB128 encoding is the type code.
+    uint64_t HeapType = uint64_t(readVarint64(Ctx)) + 0x80;
+    if (Code == wasm::WASM_TYPE_NULLABLE) {
+      switch (HeapType) {
+      case wasm::WASM_TYPE_FUNCREF:
+      case wasm::WASM_TYPE_EXTERNREF:
+      case wasm::WASM_TYPE_EXNREF:
+        return wasm::ValType::Kind(HeapType);
+      }
+    }
   }
-  return wasm::ValType(wasm::ValType::OTHERREF);
+  return wasm::ValType::OTHERREF;
 }
 
 static Error readInitExpr(wasm::WasmInitExpr &Expr,
@@ -1328,7 +1336,7 @@ Error WasmObjectFile::parseImport(ReadContext &Ctx, wasm::WasmImport &Im) {
     break;
   case wasm::WASM_EXTERNAL_GLOBAL:
     NumImportedGlobals++;
-    Im.Global.Type = readUint8(Ctx);
+    Im.Global.Type = parseValType(Ctx, readVaruint32(Ctx)).getKind();
     Im.Global.Mutable = readVaruint1(Ctx);
     break;
   case wasm::WASM_EXTERNAL_MEMORY:
@@ -1724,7 +1732,7 @@ Error WasmObjectFile::parseCodeSection(ReadContext &Ctx) {
     while (NumLocalDecls--) {
       wasm::WasmLocalDecl Decl;
       Decl.Count = readVaruint32(Ctx);
-      Decl.Type = readUint8(Ctx);
+      Decl.Type = parseValType(Ctx, readVaruint32(Ctx)).getKind();
       Function.Locals.push_back(Decl);
     }
 
