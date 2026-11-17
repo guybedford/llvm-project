@@ -2391,7 +2391,7 @@ void WebAssemblyCFGStackifyImpl::fixEndsAtEndOfFunction(MachineFunction &MF) {
       MFI.getResults().size() > 1
           ? WebAssembly::BlockType::Multivalue
           : WebAssembly::BlockType(
-                WebAssembly::toValType(MFI.getResults().front()));
+                WebAssembly::toValType(MFI.getResults().front()).getKind());
 
   SmallVector<MachineBasicBlock::reverse_iterator, 4> Worklist;
   Worklist.push_back(MF.rbegin()->rbegin());

@@ -320,7 +320,7 @@ private:
     W->OS.write(Buffer, sizeof(Buffer));
   }
 
-  void writeValueType(wasm::ValType Ty) { W->OS << static_cast<char>(Ty); }
+  void writeValueType(wasm::ValType Ty) { W->OS << char(Ty.getKind()); }
 
   void writeTypeSection(ArrayRef<wasm::WasmSignature> Signatures);
   void writeImportSection(ArrayRef<wasm::WasmImport> Imports, uint64_t DataSize,
@@ -856,7 +856,7 @@ void WasmObjectWriter::writeImportSection(ArrayRef<wasm::WasmImport> Imports,
       encodeULEB128(NumPages, W->OS); // initial
       break;
     case wasm::WASM_EXTERNAL_TABLE:
-      W->OS << char(Import.Table.ElemType);
+      W->OS << char(Import.Table.ElemType.getKind());
       encodeULEB128(Import.Table.Limits.Flags, W->OS);
       encodeULEB128(NumElements, W->OS); // initial
       break;
@@ -954,7 +954,7 @@ void WasmObjectWriter::writeTableSection(ArrayRef<wasm::WasmTable> Tables) {
   for (const wasm::WasmTable &Table : Tables) {
     assert(Table.Type.ElemType != wasm::ValType::OTHERREF &&
            "Cannot encode general ref-typed tables");
-    encodeULEB128((uint32_t)Table.Type.ElemType, W->OS);
+    encodeULEB128((uint32_t)Table.Type.ElemType.getKind(), W->OS);
     encodeULEB128(Table.Type.Limits.Flags, W->OS);
     encodeULEB128(Table.Type.Limits.Minimum, W->OS);
     if (Table.Type.Limits.Flags & wasm::WASM_LIMITS_FLAG_HAS_MAX)

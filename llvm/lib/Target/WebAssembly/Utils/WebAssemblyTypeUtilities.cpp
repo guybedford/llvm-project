@@ -94,6 +94,6 @@ void WebAssembly::wasmSymbolSetType(MCSymbolWasm *Sym, const Type *GlobalVT,
     Sym->setTableType(ValTy);
   } else {
     Sym->setType(wasm::WASM_SYMBOL_TYPE_GLOBAL);
-    Sym->setGlobalType(wasm::WasmGlobalType{uint8_t(ValTy), Mutable});
+    Sym->setGlobalType(wasm::WasmGlobalType{uint8_t(ValTy.getKind()), Mutable});
   }
 }

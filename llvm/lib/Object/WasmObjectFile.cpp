@@ -194,7 +194,7 @@ static wasm::ValType parseValType(WasmObjectFile::ReadContext &Ctx,
   case wasm::WASM_TYPE_FUNCREF:
   case wasm::WASM_TYPE_EXTERNREF:
   case wasm::WASM_TYPE_EXNREF:
-    return wasm::ValType(Code);
+    return wasm::ValType::Kind(Code);
   }
   if (Code == wasm::WASM_TYPE_NULLABLE || Code == wasm::WASM_TYPE_NONNULLABLE) {
     /* Discard HeapType */ readVarint64(Ctx);
@@ -1499,7 +1499,7 @@ Error WasmObjectFile::parseGlobalSection(ReadContext &Ctx) {
     const uint8_t *GlobalStart = Ctx.Ptr;
     Global.Offset = static_cast<uint32_t>(GlobalStart - SectionStart);
     auto GlobalOpcode = readVaruint32(Ctx);
-    Global.Type.Type = (uint8_t)parseValType(Ctx, GlobalOpcode);
+    Global.Type.Type = parseValType(Ctx, GlobalOpcode).getKind();
     Global.Type.Mutable = readVaruint1(Ctx);
     if (Error Err = readInitExpr(Global.InitExpr, Ctx))
       return Err;

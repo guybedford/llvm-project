@@ -45,7 +45,7 @@ static WasmYAML::Table makeTable(uint32_t Index,
                                  const wasm::WasmTableType &Type) {
   WasmYAML::Table T;
   T.Index = Index;
-  T.ElemType = (uint32_t)Type.ElemType;
+  T.ElemType = Type.ElemType.getKind();
   T.TableLimits = makeLimits(Type.Limits);
   return T;
 }
@@ -230,9 +230,9 @@ ErrorOr<WasmYAML::Object *> WasmDumper::dump() {
         WasmYAML::Signature Sig;
         Sig.Index = Index++;
         for (const auto &ParamType : FunctionSig.Params)
-          Sig.ParamTypes.emplace_back(static_cast<uint32_t>(ParamType));
+          Sig.ParamTypes.emplace_back(ParamType.getKind());
         for (const auto &ReturnType : FunctionSig.Returns)
-          Sig.ReturnTypes.emplace_back(static_cast<uint32_t>(ReturnType));
+          Sig.ReturnTypes.emplace_back(ReturnType.getKind());
         TypeSec->Signatures.push_back(Sig);
       }
       S = std::move(TypeSec);
@@ -344,7 +344,7 @@ ErrorOr<WasmYAML::Object *> WasmDumper::dump() {
         WasmYAML::ElemSegment Seg;
         Seg.Flags = Segment.Flags;
         Seg.TableNumber = Segment.TableNumber;
-        Seg.ElemKind = (uint32_t)Segment.ElemKind;
+        Seg.ElemKind = Segment.ElemKind.getKind();
         Seg.Offset.Extended = Segment.Offset.Extended;
         if (Seg.Offset.Extended) {
           Seg.Offset.Body = yaml::BinaryRef(Segment.Offset.Body);
