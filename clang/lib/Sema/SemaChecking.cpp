@@ -17519,7 +17519,8 @@ bool Sema::BuiltinNonDeterministicValue(CallExpr *TheCall) {
   ExprResult Arg = TheCall->getArg(0);
   QualType TyArg = Arg.get()->getType();
 
-  if (!TyArg->isBuiltinType() && !TyArg->isVectorType())
+  if ((!TyArg->isBuiltinType() && !TyArg->isVectorType()) ||
+      TyArg.isWebAssemblyReferenceType())
     return Diag(TheCall->getArg(0)->getBeginLoc(),
                 diag::err_builtin_invalid_arg_type)
            << 1 << /* vector */ 2 << /* integer */ 1 << /* fp */ 1 << TyArg;

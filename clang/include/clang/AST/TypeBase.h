@@ -1149,8 +1149,11 @@ public:
   /// Returns true if it is a WebAssembly Reference Type.
   bool isWebAssemblyReferenceType() const;
 
-  /// Returns true if it is a WebAssembly Externref Type.
+  /// Returns true if it is the nullable WebAssembly Externref Type.
   bool isWebAssemblyExternrefType() const;
+
+  /// Returns true if it is the non-nullable WebAssembly Externref Type.
+  bool isWebAssemblyNonNullExternrefType() const;
 
   /// Returns true if it is a WebAssembly Funcref Type.
   bool isWebAssemblyFuncrefType() const;
@@ -2499,8 +2502,11 @@ public:
   /// Returns true for RVV scalable vector types.
   bool isRVVSizelessBuiltinType() const;
 
-  /// Check if this is a WebAssembly Externref Type.
+  /// Check if this is the nullable WebAssembly Externref Type.
   bool isWebAssemblyExternrefType() const;
+
+  /// Check if this is the non-nullable WebAssembly Externref Type.
+  bool isWebAssemblyNonNullExternrefType() const;
 
   /// Returns true if this is a WebAssembly table type: either an array of
   /// reference types, or a pointer to a reference type (which can only be

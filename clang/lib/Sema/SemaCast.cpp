@@ -3129,6 +3129,14 @@ void CastOperation::CheckCStyleCast() {
     return;
   }
 
+  // Allow spelling the implicit conversion of a non-nullable WebAssembly
+  // reference to its nullable counterpart as a cast.
+  if (DestType->isWebAssemblyExternrefType() &&
+      SrcType->isWebAssemblyNonNullExternrefType()) {
+    Kind = CK_BitCast;
+    return;
+  }
+
   // Allow bitcasting between compatible SVE vector types.
   if ((SrcType->isVectorType() || DestType->isVectorType()) &&
       Self.isValidSveBitcast(SrcType, DestType)) {
@@ -3416,6 +3424,15 @@ void CastOperation::CheckBuiltinBitCast() {
                                diag::err_typecheck_cast_to_incomplete) ||
       Self.RequireCompleteType(OpRange.getBegin(), SrcType,
                                diag::err_incomplete_type)) {
+    SrcExpr = ExprError();
+    return;
+  }
+
+  if ((SrcType.isWebAssemblyReferenceType() ||
+       DestType.isWebAssemblyReferenceType()) &&
+      !Self.Context.hasSameUnqualifiedType(SrcType, DestType)) {
+    Self.Diag(OpRange.getBegin(), diag::err_bit_cast_wasm_reftype)
+        << SrcType << DestType;
     SrcExpr = ExprError();
     return;
   }

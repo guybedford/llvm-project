@@ -2191,6 +2191,13 @@ QualType Sema::BuildArrayType(QualType T, ArraySizeModifier ASM,
     }
   }
 
+  // The elements of a WebAssembly table need a default value, which a
+  // non-nullable reference does not have.
+  if (T->isWebAssemblyNonNullExternrefType()) {
+    Diag(Loc, diag::err_wasm_non_null_reftype_table) << T;
+    return QualType();
+  }
+
   if (T->isSizelessType() && !T.isWebAssemblyReferenceType()) {
     Diag(Loc, diag::err_array_incomplete_or_sizeless_type) << 1 << T;
     return QualType();

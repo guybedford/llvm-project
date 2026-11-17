@@ -65,6 +65,7 @@
 #include "clang/Sema/SemaOpenMP.h"
 #include "clang/Sema/SemaProxy.h"
 #include "clang/Sema/SemaPseudoObject.h"
+#include "clang/Sema/SemaWasm.h"
 #include "clang/Sema/Template.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -9185,6 +9186,12 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
     return QualType();
   }
 
+  // A WebAssembly non-nullable reference and its nullable counterpart are
+  // brought to the nullable type.
+  if (QualType WasmResTy = Wasm().CheckConditionalExternrefOperands(LHS, RHS);
+      !WasmResTy.isNull())
+    return WasmResTy;
+
   // Diagnose attempts to convert between __ibm128, __float128 and long double
   // where such conversions currently can't be handled.
   if (unsupportedTypeConversion(*this, LHSTy, RHSTy)) {
@@ -9987,6 +9994,14 @@ AssignConvertType Sema::CheckAssignmentConstraints(QualType LHSType,
       RHS = ImpCastExprToType(RHS.get(), AtomicTy->getValueType(), Kind);
     Kind = CK_NonAtomicToAtomic;
     return Result;
+  }
+
+  // A non-nullable WebAssembly reference converts to its nullable counterpart.
+  // There is no implicit conversion in the other direction.
+  if (LHSType->isWebAssemblyExternrefType() &&
+      RHSType->isWebAssemblyNonNullExternrefType()) {
+    Kind = CK_BitCast;
+    return AssignConvertType::Compatible;
   }
 
   // If the left-hand side is a reference type, then we are in a

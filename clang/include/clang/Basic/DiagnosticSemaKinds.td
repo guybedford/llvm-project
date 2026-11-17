@@ -13653,6 +13653,9 @@ def err_bit_cast_non_trivially_copyable : Error<
   "'__builtin_bit_cast' %select{source|destination}0 type must be trivially copyable">;
 def err_bit_cast_type_size_mismatch : Error<
   "size of '__builtin_bit_cast' source type %0 does not match destination type %1 (%2 vs %3 bytes)">;
+def err_bit_cast_wasm_reftype : Error<
+  "'__builtin_bit_cast' from %0 to %1 is not allowed; WebAssembly reference "
+  "types cannot be reinterpreted">;
 
 def err_get_vtable_pointer_incorrect_type
     : Error<"__builtin_get_vtable_pointer requires an argument of%select{| "
@@ -14210,6 +14213,13 @@ def err_wasm_table_must_be_static : Error<
   "WebAssembly table must be static">;
 def err_wasm_reftype_multidimensional_array : Error<
   "multi-dimensional arrays of WebAssembly references are not allowed">;
+def err_wasm_non_null_reftype_storage_duration : Error<
+  "variable of non-nullable WebAssembly reference type %0 cannot have "
+  "%select{static|thread}1 storage duration">;
+def err_wasm_non_null_reftype_table : Error<
+  "WebAssembly table cannot have non-nullable element type %0">;
+def err_wasm_non_null_reftype_no_default : Error<
+  "non-nullable WebAssembly reference type %0 has no default value">;
 def err_wasm_builtin_arg_must_be_table_type : Error <
   "%ordinal0 argument must be a WebAssembly table">;
 def err_wasm_builtin_arg_must_be_externref_type : Error <

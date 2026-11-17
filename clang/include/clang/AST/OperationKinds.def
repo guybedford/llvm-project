@@ -57,7 +57,8 @@ CAST_OPERATION(Dependent)
 /// operand has the same type kind; otherwise, it's one of the
 /// specialized casts below.
 ///
-/// Vector coercions are bitcasts.
+/// Vector coercions are bitcasts, as is the conversion of a non-nullable
+/// WebAssembly reference to its nullable counterpart.
 CAST_OPERATION(BitCast)
 
 /// CK_LValueBitCast - A conversion which reinterprets the address of

@@ -199,6 +199,7 @@ ImplicitConversionRank clang::GetConversionRank(ImplicitConversionKind Kind) {
       ICR_HLSL_Scalar_Widening,
       ICR_HLSL_Scalar_Widening,
       ICR_Conversion,
+      ICR_Conversion,
   };
   static_assert(std::size(Rank) == (int)ICK_Num_Conversion_Kinds);
   return Rank[(int)Kind];
@@ -264,6 +265,7 @@ static const char *GetImplicitConversionName(ImplicitConversionKind Kind) {
       "HLSL vector splat",
       "HLSL matrix splat",
       "HLSL packed type conversion",
+      "WebAssembly nullable reference conversion",
   };
   static_assert(std::size(Name) == (int)ICK_Num_Conversion_Kinds);
   return Name[Kind];
@@ -2659,6 +2661,12 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
                                         DimensionICK, From)) {
     SCS.Second = SecondICK;
     SCS.Dimension = DimensionICK;
+    FromType = ToType.getUnqualifiedType();
+  } else if (FromType->isWebAssemblyNonNullExternrefType() &&
+             ToType->isWebAssemblyExternrefType()) {
+    // A non-nullable WebAssembly reference converts to its nullable
+    // counterpart. There is no implicit conversion in the other direction.
+    SCS.Second = ICK_Wasm_Nullable_Reference_Conversion;
     FromType = ToType.getUnqualifiedType();
   } else if (!S.getLangOpts().CPlusPlus &&
              S.Context.typesAreCompatible(ToType, FromType)) {
@@ -6121,7 +6129,9 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
     }
     //    - if the initializer list has no elements, the implicit conversion
     //      sequence is the identity conversion.
-    else if (From->hasZeroInits()) {
+    // A non-nullable WebAssembly reference cannot be value-initialized.
+    else if (From->hasZeroInits() &&
+             !ToType->isWebAssemblyNonNullExternrefType()) {
       Result.setStandard();
       Result.Standard.setAsIdentityConversion();
       Result.Standard.setFromType(ToType);
@@ -6549,6 +6559,7 @@ static bool CheckConvertedConstantConversions(Sema &S,
   case ICK_HLSL_Vector_Truncation:
   case ICK_HLSL_Matrix_Truncation:
   case ICK_HLSL_Packed_Type_Conversion:
+  case ICK_Wasm_Nullable_Reference_Conversion:
     return false;
 
   case ICK_Lvalue_To_Rvalue:

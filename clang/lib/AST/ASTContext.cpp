@@ -3621,7 +3621,8 @@ static void encodeTypeForFunctionPointerAuth(const ASTContext &Ctx,
       llvm_unreachable("should never get here");
 #define AMDGPU_TYPE(Name, Id, SingletonId, Width, Align) case BuiltinType::Id:
 #include "clang/Basic/AMDGPUTypes.def"
-    case BuiltinType::WasmExternRef:
+#define WASM_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
 #define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
 #include "clang/Basic/RISCVVTypes.def"
 #define SPIRV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
@@ -4670,6 +4671,12 @@ QualType ASTContext::getWebAssemblyExternrefType() const {
   }
   llvm_unreachable(
       "shouldn't try to generate type externref outside WebAssembly target");
+}
+
+QualType ASTContext::getWebAssemblyNonNullExternrefType() const {
+  assert(Target->getTriple().isWasm() && Target->hasFeature("gc") &&
+         "non-nullable externref requires the WebAssembly gc feature");
+  return WasmNonNullExternRefTy;
 }
 
 /// getScalableVectorType - Return the unique reference to a scalable vector

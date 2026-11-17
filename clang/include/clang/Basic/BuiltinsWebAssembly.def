@@ -202,6 +202,10 @@ TARGET_BUILTIN(__builtin_wasm_replace_lane_f16x8, "V8hV8hIif", "nc", "fp16")
 TARGET_BUILTIN(__builtin_wasm_ref_null_extern, "v*1", "nct", "reference-types")
 TARGET_BUILTIN(__builtin_wasm_ref_is_null_extern, "iv*1", "nct", "reference-types")
 
+// Converts an externref to the non-nullable __non_null_externref_t, trapping
+// if it is null.
+TARGET_BUILTIN(__builtin_wasm_ref_as_non_null_extern, "v*1v*1", "nt", "gc")
+
 // A funcref represented as a function pointer with the funcref attribute
 // attached to the type, therefore SemaChecking will check for the right return
 // type.

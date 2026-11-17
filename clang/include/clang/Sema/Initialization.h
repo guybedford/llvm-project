@@ -1167,6 +1167,10 @@ public:
 
     /// HLSL initialization list flattening failed.
     FK_HLSLInitListFlatteningFailed,
+
+    /// Value-initialization of a non-nullable WebAssembly reference, which
+    /// has no default value.
+    FK_WasmNonNullReferenceValueInit,
   };
 
 private:

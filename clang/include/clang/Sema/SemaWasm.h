@@ -28,8 +28,15 @@ public:
                                            unsigned BuiltinID,
                                            CallExpr *TheCall);
 
+  /// If one operand of a conditional expression is a non-nullable externref
+  /// and the other a nullable externref, converts the former to the latter
+  /// and returns the nullable type. Otherwise returns a null type. Both
+  /// operands must already be prvalues.
+  QualType CheckConditionalExternrefOperands(ExprResult &LHS, ExprResult &RHS);
+
   bool BuiltinWasmRefNullExtern(CallExpr *TheCall);
   bool BuiltinWasmRefIsNullExtern(CallExpr *TheCall);
+  bool BuiltinWasmRefAsNonNullExtern(CallExpr *TheCall);
   bool BuiltinWasmRefNullFunc(CallExpr *TheCall);
   bool BuiltinWasmTableGet(CallExpr *TheCall);
   bool BuiltinWasmTableSet(CallExpr *TheCall);

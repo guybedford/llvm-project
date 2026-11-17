@@ -1523,6 +1523,14 @@ documentation](CIR/index.md) for more information regarding ClangIR's status and
 - Added `__builtin_wasm_memory_copy` and `__builtin_wasm_memory_fill` builtins
   for the WebAssembly `memory.copy` and `memory.fill` bulk memory instructions.
 
+- Added the `__non_null_externref_t` type for the WebAssembly non-nullable
+  reference type `(ref extern)`, available with the `gc` feature (`-mgc`). It
+  converts implicitly to `__externref_t`; the new
+  `__builtin_wasm_ref_as_non_null_extern` builtin converts in the other
+  direction, trapping on a null reference. This makes it possible to declare
+  imports such as the JS string builtins whose signatures use `(ref extern)`.
+  (#GH136594)
+
 - Fixed a "function signature mismatch" trap at program exit when destroying a
   temporary that is bound to a reference with static or thread storage
   duration. (#GH45221)

@@ -5120,7 +5120,8 @@ lldb::Encoding TypeSystemClang::GetEncoding(lldb::opaque_compiler_type_t type) {
       break;
 
     // WebAssembly builtin types.
-    case clang::BuiltinType::WasmExternRef:
+#define WASM_TYPE(Name, Id, SingletonId) case clang::BuiltinType::Id:
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
       break;
 
     case clang::BuiltinType::IncompleteMatrixIdx:

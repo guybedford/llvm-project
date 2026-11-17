@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines externref_t.  The macros are:
+//  This file defines the WebAssembly reference types.  The macros are:
 //
 //    WASM_TYPE(Name, Id, SingletonId)
 //    WASM_REF_TYPE(Name, MangledName, Id, SingletonId, AS)
@@ -35,6 +35,8 @@
 #endif
 
 WASM_REF_TYPE("__externref_t", "externref_t", WasmExternRef, WasmExternRefTy, 10)
+WASM_REF_TYPE("__non_null_externref_t", "non_null_externref_t",
+              WasmNonNullExternRef, WasmNonNullExternRefTy, 10)
 
 #undef WASM_TYPE
 #undef WASM_REF_TYPE

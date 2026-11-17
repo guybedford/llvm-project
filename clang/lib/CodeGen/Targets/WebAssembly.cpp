@@ -128,6 +128,11 @@ public:
   virtual llvm::Type *getWasmExternrefReferenceType() const override {
     return llvm::Type::getWasm_ExternrefTy(getABIInfo().getVMContext());
   }
+  /// Return the non-nullable WebAssembly externref reference type.
+  virtual llvm::Type *getWasmNonNullExternrefReferenceType() const override {
+    return llvm::Type::getWasm_ExternrefTy(getABIInfo().getVMContext(),
+                                           /*Nullable=*/false);
+  }
   /// Return the WebAssembly funcref reference type.
   virtual llvm::Type *getWasmFuncrefReferenceType() const override {
     return llvm::Type::getWasm_FuncrefTy(getABIInfo().getVMContext());

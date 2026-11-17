@@ -213,6 +213,9 @@ class Sema;
     /// HLSL packed type conversion to and from uint
     ICK_HLSL_Packed_Type_Conversion,
 
+    /// WebAssembly non-nullable to nullable reference conversion.
+    ICK_Wasm_Nullable_Reference_Conversion,
+
     /// The number of conversion kinds
     ICK_Num_Conversion_Kinds,
   };

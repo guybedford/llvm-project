@@ -9306,6 +9306,15 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
     return;
   }
 
+  // A non-nullable WebAssembly reference has no default value to initialize a
+  // global with.
+  if (!NewVD->hasLocalStorage() && T->isWebAssemblyNonNullExternrefType()) {
+    Diag(NewVD->getLocation(), diag::err_wasm_non_null_reftype_storage_duration)
+        << T << (NewVD->getTLSKind() != VarDecl::TLS_None);
+    NewVD->setInvalidDecl();
+    return;
+  }
+
   if (isVM && NewVD->hasAttr<BlocksAttr>()) {
     Diag(NewVD->getLocation(), diag::err_block_not_allowed_on)
         << diag::NotAllowedBlockVarReason::VariablyModifiedType;

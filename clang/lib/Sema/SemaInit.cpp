@@ -1747,6 +1747,16 @@ void InitListChecker::CheckScalarType(const InitializedEntity &Entity,
                                       InitListExpr *StructuredList,
                                       unsigned &StructuredIndex) {
   if (Index >= IList->getNumInits()) {
+    if (DeclType->isWebAssemblyNonNullExternrefType()) {
+      if (!VerifyOnly)
+        SemaRef.Diag(IList->getBeginLoc(),
+                     diag::err_wasm_non_null_reftype_no_default)
+            << DeclType << IList->getSourceRange();
+      hadError = true;
+      ++Index;
+      ++StructuredIndex;
+      return;
+    }
     if (!VerifyOnly) {
       if (SemaRef.getLangOpts().CPlusPlus) {
         if (DeclType->isSizelessBuiltinType())
@@ -4078,6 +4088,7 @@ bool InitializationSequence::isAmbiguous() const {
   case FK_ParenthesizedListInitFailed:
   case FK_DesignatedInitForNonAggregate:
   case FK_HLSLInitListFlatteningFailed:
+  case FK_WasmNonNullReferenceValueInit:
     return false;
 
   case FK_ReferenceInitOverloadFailed:
@@ -5886,6 +5897,12 @@ static void TryValueInitialization(Sema &S,
   //   To value-initialize an object of type T means:
   QualType T = Entity.getType();
   assert(!T->isVoidType() && "Cannot value-init void");
+
+  if (T->isWebAssemblyNonNullExternrefType()) {
+    Sequence.SetFailed(
+        InitializationSequence::FK_WasmNonNullReferenceValueInit);
+    return;
+  }
 
   //     -- if T is an array type, then each element is value-initialized;
   T = S.Context.getBaseElementType(T);
@@ -9578,10 +9595,16 @@ bool InitializationSequence::Diagnose(Sema &S,
                                       /*VerifyOnly=*/false);
     break;
 
-  case FK_DesignatedInitForNonAggregate:
+  case FK_DesignatedInitForNonAggregate: {
     InitListExpr *InitList = cast<InitListExpr>(Args[0]);
     S.Diag(Kind.getLocation(), diag::err_designated_init_for_non_aggregate)
         << Entity.getType() << InitList->getSourceRange();
+    break;
+  }
+
+  case FK_WasmNonNullReferenceValueInit:
+    S.Diag(Kind.getLocation(), diag::err_wasm_non_null_reftype_no_default)
+        << DestType << Kind.getRange();
     break;
   }
 
@@ -9760,6 +9783,10 @@ void InitializationSequence::dump(raw_ostream &OS) const {
 
     case FK_HLSLInitListFlatteningFailed:
       OS << "HLSL initialization list flattening failed";
+      break;
+
+    case FK_WasmNonNullReferenceValueInit:
+      OS << "value-initialization of non-nullable WebAssembly reference";
       break;
     }
     OS << '\n';

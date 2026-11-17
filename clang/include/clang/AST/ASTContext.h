@@ -1873,6 +1873,9 @@ public:
   /// Return a WebAssembly externref type.
   QualType getWebAssemblyExternrefType() const;
 
+  /// Return the non-nullable WebAssembly externref type.
+  QualType getWebAssemblyNonNullExternrefType() const;
+
   /// Return the unique reference to a vector type of the specified
   /// element type and size.
   ///

@@ -2670,6 +2670,15 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   case CK_BlockPointerToObjCPointerCast:
   case CK_AnyPointerToBlockPointerCast:
   case CK_BitCast: {
+    // The non-nullable and nullable WebAssembly externref are distinct IR
+    // types that can only be converted with an intrinsic.
+    if (E->getType()->isWebAssemblyNonNullExternrefType() &&
+        DestTy->isWebAssemblyExternrefType()) {
+      llvm::Function *AsNullable =
+          CGF.CGM.getIntrinsic(llvm::Intrinsic::wasm_ref_as_nullable_extern);
+      return Builder.CreateCall(AsNullable, {Visit(E)});
+    }
+
     Value *Src = Visit(E);
     llvm::Type *SrcTy = Src->getType();
     llvm::Type *DstTy = ConvertType(DestTy);

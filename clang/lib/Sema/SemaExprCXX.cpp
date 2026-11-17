@@ -44,6 +44,7 @@
 #include "clang/Sema/SemaLambda.h"
 #include "clang/Sema/SemaObjC.h"
 #include "clang/Sema/SemaPPC.h"
+#include "clang/Sema/SemaWasm.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
 #include "llvm/ADT/APInt.h"
@@ -5291,6 +5292,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
 
   case ICK_SVE_Vector_Conversion:
   case ICK_RVV_Vector_Conversion:
+  case ICK_Wasm_Nullable_Reference_Conversion:
     From = ImpCastExprToType(From, ToType, CK_BitCast, VK_PRValue,
                              /*BasePath=*/nullptr, CCK)
                .get();
@@ -6264,6 +6266,12 @@ QualType Sema::CXXCheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
                                /*AllowBothBool*/ true,
                                /*AllowBoolConversions*/ false,
                                /*AllowBoolOperation*/ false);
+
+  // Extension: a WebAssembly non-nullable reference and its nullable
+  // counterpart are brought to the nullable type.
+  if (QualType ResTy = Wasm().CheckConditionalExternrefOperands(LHS, RHS);
+      !ResTy.isNull())
+    return ResTy;
 
   //   -- The second and third operands have arithmetic or enumeration type;
   //      the usual arithmetic conversions are performed to bring them to a

@@ -2992,6 +2992,53 @@ In this section, when we refer to reference types, we are referring to
 WebAssembly reference types, not C++ reference types unless stated
 otherwise.
 
+### `__non_null_externref_t`
+
+With the `gc` feature enabled (`-mgc`), `__non_null_externref_t` is the
+non-nullable counterpart of `__externref_t`, corresponding to the WebAssembly
+type `(ref extern)`. The two are distinct types, so a function taking or
+returning one has a different WebAssembly signature from a function taking or
+returning the other. This matters for imports whose signatures use
+`(ref extern)`, such as the JS string builtins.
+
+A `__non_null_externref_t` converts implicitly to `__externref_t`. There is no
+implicit conversion or cast in the other direction; use
+`__builtin_wasm_ref_as_non_null_extern` instead.
+
+All the restrictions on `__externref_t` apply to `__non_null_externref_t`. In
+addition, as a non-nullable reference has no default value, it cannot be the
+type of a variable with static or thread storage duration, it cannot be the
+element type of a WebAssembly table, and it cannot be value-initialized.
+
+```c++
+__attribute__((import_module("wasm:js-string"), import_name("concat")))
+__non_null_externref_t concat(__externref_t, __externref_t);
+
+__attribute__((import_module("wasm:js-string"), import_name("length")))
+int length(__externref_t);
+
+int concatLength(__externref_t A, __externref_t B) {
+  __non_null_externref_t Str = concat(A, B);
+  return length(Str);
+}
+```
+
+### `__builtin_wasm_ref_as_non_null_extern`
+
+This builtin function converts an `__externref_t` to a
+`__non_null_externref_t` using the WebAssembly `ref.as_non_null` instruction.
+It takes the reference as its only argument and traps if it is null. It
+requires the `gc` feature.
+
+```c++
+void take(__non_null_externref_t Obj);
+
+void pass(__externref_t Obj) {
+  if (!__builtin_wasm_ref_is_null_extern(Obj))
+    take(__builtin_wasm_ref_as_non_null_extern(Obj));
+}
+```
+
 ### `__builtin_wasm_table_set`
 
 This builtin function stores a value in a WebAssembly table.

@@ -567,11 +567,12 @@ void Sema::Initialize() {
 #include "clang/Basic/RISCVVTypes.def"
   }
 
-  if (Context.getTargetInfo().getTriple().isWasm() &&
-      Context.getTargetInfo().hasFeature("reference-types")) {
-#define WASM_TYPE(Name, Id, SingletonId)                                       \
-  addImplicitTypedef(Name, Context.SingletonId);
-#include "clang/Basic/WebAssemblyReferenceTypes.def"
+  if (Context.getTargetInfo().getTriple().isWasm()) {
+    if (Context.getTargetInfo().hasFeature("reference-types"))
+      addImplicitTypedef("__externref_t", Context.WasmExternRefTy);
+    if (Context.getTargetInfo().hasFeature("gc"))
+      addImplicitTypedef("__non_null_externref_t",
+                         Context.WasmNonNullExternRefTy);
   }
 
   if (Context.getTargetInfo().hasAMDGPUTypes() ||

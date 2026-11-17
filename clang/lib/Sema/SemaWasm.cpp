@@ -15,10 +15,12 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/AddressSpaces.h"
+#include "clang/Basic/DiagnosticFrontend.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/Attr.h"
+#include "clang/Sema/Initialization.h"
 #include "clang/Sema/Sema.h"
 
 namespace clang {
@@ -40,8 +42,29 @@ static bool CheckWasmBuiltinArgIsTable(Sema &S, CallExpr *E, unsigned ArgIndex,
   return false;
 }
 
+/// If the argument at the given index is a non-nullable externref, converts
+/// it to the nullable externref type that the reference-type intrinsics take.
+static bool ConvertNonNullExternrefArg(Sema &S, CallExpr *E,
+                                       unsigned ArgIndex) {
+  Expr *ArgExpr = E->getArg(ArgIndex);
+  if (!ArgExpr->getType().isWebAssemblyNonNullExternrefType())
+    return false;
+  ASTContext &Context = S.getASTContext();
+  ExprResult Converted = S.PerformCopyInitialization(
+      InitializedEntity::InitializeParameter(
+          Context, Context.getWebAssemblyExternrefType(), /*Consumed=*/false),
+      SourceLocation(), ArgExpr);
+  if (Converted.isInvalid())
+    return true;
+  E->setArg(ArgIndex, Converted.get());
+  return false;
+}
+
 static bool CheckWasmTableElement(Sema &S, QualType &ElTy, CallExpr *E,
                                   unsigned TableIndex, unsigned ArgIndex) {
+  if (ElTy.isWebAssemblyExternrefType() &&
+      ConvertNonNullExternrefArg(S, E, ArgIndex))
+    return true;
   Expr *NewElemArg = E->getArg(ArgIndex);
   QualType QT = NewElemArg->getType();
   // Compare the types after removing insignificant qualifiers
@@ -79,6 +102,9 @@ bool SemaWasm::BuiltinWasmRefIsNullExtern(CallExpr *TheCall) {
     return true;
   }
 
+  if (ConvertNonNullExternrefArg(SemaRef, TheCall, 0))
+    return true;
+
   Expr *ArgExpr = TheCall->getArg(0);
   if (!ArgExpr->getType().isWebAssemblyExternrefType()) {
     SemaRef.Diag(ArgExpr->getBeginLoc(),
@@ -88,6 +114,50 @@ bool SemaWasm::BuiltinWasmRefIsNullExtern(CallExpr *TheCall) {
   }
 
   return false;
+}
+
+bool SemaWasm::BuiltinWasmRefAsNonNullExtern(CallExpr *TheCall) {
+  if (SemaRef.checkArgCount(TheCall, 1))
+    return true;
+
+  // The result type only exists with the gc feature.
+  ASTContext &Context = getASTContext();
+  if (!Context.getTargetInfo().hasFeature("gc")) {
+    Diag(TheCall->getBeginLoc(), diag::err_builtin_needs_feature)
+        << TheCall->getDirectCallee() << "gc";
+    return true;
+  }
+
+  if (ConvertNonNullExternrefArg(SemaRef, TheCall, 0))
+    return true;
+
+  Expr *ArgExpr = TheCall->getArg(0);
+  if (!ArgExpr->getType().isWebAssemblyExternrefType()) {
+    Diag(ArgExpr->getBeginLoc(),
+         diag::err_wasm_builtin_arg_must_be_externref_type)
+        << 1 << ArgExpr->getSourceRange();
+    return true;
+  }
+  TheCall->setType(Context.getWebAssemblyNonNullExternrefType());
+
+  return false;
+}
+
+QualType SemaWasm::CheckConditionalExternrefOperands(ExprResult &LHS,
+                                                     ExprResult &RHS) {
+  QualType LHSTy = LHS.get()->getType();
+  QualType RHSTy = RHS.get()->getType();
+  if (LHSTy->isWebAssemblyExternrefType() &&
+      RHSTy->isWebAssemblyNonNullExternrefType()) {
+    RHS = SemaRef.ImpCastExprToType(RHS.get(), LHSTy, CK_BitCast);
+    return LHSTy;
+  }
+  if (LHSTy->isWebAssemblyNonNullExternrefType() &&
+      RHSTy->isWebAssemblyExternrefType()) {
+    LHS = SemaRef.ImpCastExprToType(LHS.get(), RHSTy, CK_BitCast);
+    return RHSTy;
+  }
+  return QualType();
 }
 
 bool SemaWasm::BuiltinWasmRefNullFunc(CallExpr *TheCall) {
@@ -296,6 +366,8 @@ bool SemaWasm::CheckWebAssemblyBuiltinFunctionCall(const TargetInfo &TI,
     return BuiltinWasmRefNullFunc(TheCall);
   case WebAssembly::BI__builtin_wasm_ref_is_null_extern:
     return BuiltinWasmRefIsNullExtern(TheCall);
+  case WebAssembly::BI__builtin_wasm_ref_as_non_null_extern:
+    return BuiltinWasmRefAsNonNullExtern(TheCall);
   case WebAssembly::BI__builtin_wasm_table_get:
     return BuiltinWasmTableGet(TheCall);
   case WebAssembly::BI__builtin_wasm_table_set:
