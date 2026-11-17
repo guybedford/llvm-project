@@ -442,6 +442,10 @@ Makes programs 10x faster by doing Special New Thing.
   flag (see https://github.com/WebAssembly/tool-conventions/pull/267)
 * Added `@llvm.wasm.memory.copy` and `@llvm.wasm.memory.fill` intrinsics for
   the WebAssembly `memory.copy` and `memory.fill` instructions.
+* Added the non-nullable reference type `(ref extern)` as
+  `target("wasm.externref.nonnull")`, with the
+  `@llvm.wasm.ref.as_non_null.extern` and `@llvm.wasm.ref.as_nullable.extern`
+  intrinsics to convert from and to `externref`. It requires the `gc` feature.
 * The assembler, the object file tools and `wasm-ld` handle the non-nullable
   reference types `(ref func)`, `(ref extern)` and `(ref exn)` in function
   signatures, along with the `ref.as_non_null` instruction.

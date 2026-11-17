@@ -794,6 +794,17 @@ LowerCallResults(MachineInstr &CallResults, DebugLoc DL, MachineBasicBlock *BB,
   assert(CallParams.getOpcode() ==
          (IsRetCall ? WebAssembly::RET_CALL_PARAMS : WebAssembly::CALL_PARAMS));
 
+  // LowerCall adds the signature of an indirect call when it has types that
+  // the register classes of the operands don't distinguish.
+  const ConstantInt *Signature = nullptr;
+  for (unsigned I = 0, E = CallParams.getNumOperands(); I < E; ++I) {
+    if (CallParams.getOperand(I).isCImm()) {
+      Signature = CallParams.getOperand(I).getCImm();
+      CallParams.removeOperand(I);
+      break;
+    }
+  }
+
   bool IsIndirect =
       CallParams.getOperand(0).isReg() || CallParams.getOperand(0).isFI();
 
@@ -850,7 +861,10 @@ LowerCallResults(MachineInstr &CallResults, DebugLoc DL, MachineBasicBlock *BB,
   if (IsIndirect) {
     // Placeholder for the type index.
     // This gets replaced with the correct value in WebAssemblyMCInstLower.cpp
-    MIB.addImm(0);
+    if (Signature)
+      MIB.addCImm(Signature);
+    else
+      MIB.addImm(0);
     // The table into which this call_indirect indexes.
     MCSymbolWasm *Table = IsFuncrefCall
                               ? WebAssembly::getOrCreateFuncrefCallTableSymbol(
@@ -1263,6 +1277,24 @@ static void fail(const SDLoc &DL, SelectionDAG &DAG, const char *Msg) {
       DiagnosticInfoUnsupported(MF.getFunction(), Msg, DL.getDebugLoc()));
 }
 
+static bool isNonNullRef(const Type *Ty) {
+  return Ty && WebAssembly::isWebAssemblyNonNullRefType(Ty);
+}
+
+// Test whether any of the arguments or results is a non-nullable reference,
+// diagnosing the lack of the feature they need.
+template <typename ArgT>
+static bool hasNonNullRef(const SmallVectorImpl<ArgT> &Args, const SDLoc &DL,
+                          SelectionDAG &DAG,
+                          const WebAssemblySubtarget *Subtarget) {
+  if (none_of(Args, [](const ArgT &Arg) { return isNonNullRef(Arg.OrigTy); }))
+    return false;
+  if (!Subtarget->hasGC())
+    fail(DL, DAG,
+         "WebAssembly non-nullable reference types require the 'gc' feature");
+  return true;
+}
+
 // Test whether the given calling convention is supported.
 static bool callingConvSupported(CallingConv::ID CallConv) {
   // We currently support the language-independent target-independent
@@ -1335,6 +1367,21 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
     if (!TypesMatch)
       NoTail("WebAssembly tail call requires caller and callee return types to "
              "match");
+
+    // A (ref ht) result can be returned as a (ref null ht), but not the other
+    // way around.
+    SmallVector<wasm::ValType, 4> CallerRetValTys;
+    SmallVector<wasm::ValType, 4> CalleeRetValTys;
+    computeLegalValTypes(F, TM, RetTy, CallerRetValTys);
+    computeLegalValTypes(F, TM, CLI.RetTy, CalleeRetValTys);
+    if (TypesMatch &&
+        !std::equal(CallerRetValTys.begin(), CallerRetValTys.end(),
+                    CalleeRetValTys.begin(),
+                    [](wasm::ValType Caller, wasm::ValType Callee) {
+                      return Caller.isNullable() || !Callee.isNullable();
+                    }))
+      NoTail("WebAssembly tail call cannot return a nullable reference as a "
+             "non-nullable reference");
 
     // If pointers to local stack values are passed, we cannot tail call
     if (CLI.CB) {
@@ -1554,6 +1601,28 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
     InTys.push_back(In.VT);
   }
 
+  bool HasNonNullRef = hasNonNullRef(Outs, DL, DAG, Subtarget);
+  HasNonNullRef |= hasNonNullRef(Ins, DL, DAG, Subtarget);
+  if (HasNonNullRef && Callee.getOpcode() != WebAssemblyISD::Wrapper) {
+    // An indirect call's signature is otherwise derived from the register
+    // classes of its operands, which don't tell (ref extern) from externref.
+    auto ToValType = [](MVT VT, const Type *OrigTy) {
+      wasm::ValType Ty = WebAssembly::toValType(VT);
+      return isNonNullRef(OrigTy) ? Ty.asNonNullable() : Ty;
+    };
+    SmallVector<wasm::ValType, 8> Params;
+    SmallVector<wasm::ValType, 2> Returns;
+    for (unsigned I = 0, E = IsVarArg ? NumFixedArgs : Outs.size(); I < E; ++I)
+      Params.push_back(ToValType(Outs[I].VT, Outs[I].OrigTy));
+    if (IsVarArg)
+      Params.push_back(WebAssembly::toValType(PtrVT));
+    for (const auto &In : Ins)
+      Returns.push_back(ToValType(In.VT, In.OrigTy));
+    APInt Sig = WebAssembly::encodeFunctionSignature(Returns, Params);
+    Ops.push_back(DAG.getTargetConstant(
+        Sig, DL, EVT::getIntegerVT(*DAG.getContext(), Sig.getBitWidth())));
+  }
+
   // Lastly, if this is a call to a funcref we need to add an instruction
   // table.set to the chain and transform the call.
   if (IsFuncrefCall) {
@@ -1613,6 +1682,8 @@ SDValue WebAssemblyTargetLowering::LowerReturn(
   if (!callingConvSupported(CallConv))
     fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
 
+  hasNonNullRef(Outs, DL, DAG, Subtarget);
+
   SmallVector<SDValue, 4> RetOps(1, Chain);
   RetOps.append(OutVals.begin(), OutVals.end());
   Chain = DAG.getNode(WebAssemblyISD::RETURN, DL, MVT::Other, RetOps);
@@ -1642,6 +1713,8 @@ SDValue WebAssemblyTargetLowering::LowerFormalArguments(
 
   MachineFunction &MF = DAG.getMachineFunction();
   auto *MFI = MF.getInfo<WebAssemblyFunctionInfo>();
+
+  hasNonNullRef(Ins, DL, DAG, Subtarget);
 
   // Set up the incoming ARGUMENTS value, which serves to represent the liveness
   // of the incoming values before they're represented by virtual registers.
@@ -2272,6 +2345,15 @@ SDValue WebAssemblyTargetLowering::LowerIntrinsic(SDValue Op,
   switch (IntNo) {
   default:
     return SDValue(); // Don't custom lower most intrinsics.
+
+  case Intrinsic::wasm_ref_as_nullable_extern:
+    return Op.getOperand(1);
+
+  case Intrinsic::wasm_ref_as_non_null_extern:
+    if (Subtarget->hasGC())
+      return SDValue();
+    fail(DL, DAG, "ref.as_non_null requires the 'gc' feature");
+    return DAG.getMergeValues({Op.getOperand(2), Op.getOperand(0)}, DL);
 
   case Intrinsic::wasm_lsda: {
     auto PtrVT = getPointerTy(MF.getDataLayout());

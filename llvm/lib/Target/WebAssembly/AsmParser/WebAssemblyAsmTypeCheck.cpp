@@ -674,6 +674,20 @@ bool WebAssemblyAsmTypeCheck::typeCheck(SMLoc ErrorLoc, const MCInst &Inst,
     return false;
   }
 
+  if (Name == "ref.i31") {
+    bool Error = popType(ErrorLoc, wasm::ValType::I32);
+    pushType(Ref{});
+    return Error;
+  }
+
+  // The result is as nullable as the operand, which is not tracked for
+  // references to any.
+  if (Name == "extern.convert_any") {
+    bool Error = popRefType(ErrorLoc);
+    pushType(wasm::ValType::EXTERNREF);
+    return Error;
+  }
+
   if (Name == "ref.as_non_null") {
     // The result is the non-nullable reference type with the operand's heap
     // type, if that is known.

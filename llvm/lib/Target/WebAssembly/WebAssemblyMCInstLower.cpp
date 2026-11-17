@@ -95,11 +95,8 @@ WebAssemblyMCInstLower::GetGlobalAddressSymbol(const GlobalValue &Global,
 
   const auto *FuncTy = cast<FunctionType>(Global.getValueType());
 
-  SmallVector<MVT, 1> ResultMVTs;
-  SmallVector<MVT, 4> ParamMVTs;
   const auto *const F = dyn_cast<Function>(&Global);
-  computeSignatureVTs(FuncTy, F, CurrentFunc, TM, ParamMVTs, ResultMVTs);
-  auto Signature = signatureFromMVTs(Ctx, ResultMVTs, ParamMVTs);
+  auto Signature = computeSignature(Ctx, FuncTy, F, CurrentFunc, TM);
 
   bool InvokeDetected = false;
   auto *WasmSym = Printer.getMCSymbolForFunction(F, Signature, InvokeDetected);
@@ -189,10 +186,7 @@ static void getFunctionReturns(const MachineInstr *MI,
                                SmallVectorImpl<wasm::ValType> &Returns) {
   const Function &F = MI->getMF()->getFunction();
   const TargetMachine &TM = MI->getMF()->getTarget();
-  Type *RetTy = F.getReturnType();
-  SmallVector<MVT, 4> CallerRetTys;
-  computeLegalValueVTs(F, TM, RetTy, CallerRetTys);
-  valTypesFromMVTs(CallerRetTys, Returns);
+  computeLegalValTypes(F, TM, F.getReturnType(), Returns);
 }
 
 void WebAssemblyMCInstLower::lower(const MachineInstr *MI,

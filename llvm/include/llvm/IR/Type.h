@@ -519,7 +519,8 @@ public:
   //===--------------------------------------------------------------------===//
   // Convenience methods for getting pointer types.
   //
-  LLVM_ABI static Type *getWasm_ExternrefTy(LLVMContext &C);
+  LLVM_ABI static Type *getWasm_ExternrefTy(LLVMContext &C,
+                                            bool Nullable = true);
   LLVM_ABI static Type *getWasm_FuncrefTy(LLVMContext &C);
 
 private:

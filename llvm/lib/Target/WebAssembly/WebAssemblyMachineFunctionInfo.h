@@ -167,11 +167,22 @@ void computeSignatureVTs(const FunctionType *Ty, const Function *TargetFunc,
                          SmallVectorImpl<MVT> &Params,
                          SmallVectorImpl<MVT> &Results);
 
-void valTypesFromMVTs(ArrayRef<MVT> In, SmallVectorImpl<wasm::ValType> &Out);
+// The wasm value types Ty is passed as. Unlike MVTs, these distinguish
+// non-nullable references from nullable ones.
+void computeLegalValTypes(const Function &F, const TargetMachine &TM, Type *Ty,
+                          SmallVectorImpl<wasm::ValType> &ValTypes);
 
-wasm::WasmSignature *signatureFromMVTs(MCContext &Ctx,
-                                       const SmallVectorImpl<MVT> &Results,
-                                       const SmallVectorImpl<MVT> &Params);
+// As computeSignatureVTs, but computes the wasm signature.
+void computeSignature(const FunctionType *Ty, const Function *TargetFunc,
+                      const Function &ContextFunc, const TargetMachine &TM,
+                      SmallVectorImpl<wasm::ValType> &Params,
+                      SmallVectorImpl<wasm::ValType> &Results);
+wasm::WasmSignature *computeSignature(MCContext &Ctx, const FunctionType *Ty,
+                                      const Function *TargetFunc,
+                                      const Function &ContextFunc,
+                                      const TargetMachine &TM);
+
+void valTypesFromMVTs(ArrayRef<MVT> In, SmallVectorImpl<wasm::ValType> &Out);
 
 namespace yaml {
 

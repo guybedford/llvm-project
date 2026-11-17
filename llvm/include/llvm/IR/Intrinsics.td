@@ -396,6 +396,7 @@ def IIT_V6 : IIT_Vec<6, 50>;
 def IIT_V10 : IIT_Vec<10, 51>;
 def IIT_V2048 : IIT_Vec<2048, 52>;
 def IIT_V4096 : IIT_Vec<4096, 53>;
+def IIT_EXTERNREF_NONNULL : IIT_Base<54>;
 }
 
 defvar IIT_all_FixedTypes = !filter(iit, IIT_all,
@@ -742,6 +743,10 @@ def llvm_vararg_ty     : LLVMType<isVoid>;   // this means vararg here
 
 def llvm_externref_ty  : LLVMType<externref>;
 def llvm_funcref_ty    : LLVMType<funcref>;
+// (ref extern) shares externref's value type; only the IR type differs.
+def llvm_externref_nonnull_ty : LLVMType<externref> {
+  let Sig = [IIT_EXTERNREF_NONNULL.Number];
+}
 def llvm_exnref_ty     : LLVMType<exnref>;
 
 //===----------------------------------------------------------------------===//

@@ -17,6 +17,7 @@
 
 #include "MCTargetDesc/WebAssemblyMCTargetDesc.h"
 #include "Utils/WasmAddressSpaces.h"
+#include "Utils/WebAssemblyTypeUtilities.h"
 #include "WebAssemblyMachineFunctionInfo.h"
 #include "WebAssemblySubtarget.h"
 #include "WebAssemblyUtilities.h"
@@ -112,6 +113,10 @@ class WebAssemblyFastISel final : public FastISel {
 private:
   // Utility helper routines
   MVT::SimpleValueType getSimpleType(Type *Ty) {
+    // These need ref.as_non_null at calls and returns and are not visible in
+    // the value type, so leave them to SelectionDAG.
+    if (WebAssembly::isWebAssemblyNonNullRefType(Ty))
+      return MVT::INVALID_SIMPLE_VALUE_TYPE;
     EVT VT = TLI.getValueType(DL, Ty, /*AllowUnknown=*/true);
     return VT.isSimple() ? VT.getSimpleVT().SimpleTy
                          : MVT::INVALID_SIMPLE_VALUE_TYPE;

@@ -318,8 +318,9 @@ Type *Type::getByteFromIntType(Type *Ty) {
   return ByteTy;
 }
 
-Type *Type::getWasm_ExternrefTy(LLVMContext &C) {
-  return TargetExtType::get(C, "wasm.externref", {}, {});
+Type *Type::getWasm_ExternrefTy(LLVMContext &C, bool Nullable) {
+  return TargetExtType::get(
+      C, Nullable ? "wasm.externref" : "wasm.externref.nonnull", {}, {});
 }
 
 Type *Type::getWasm_FuncrefTy(LLVMContext &C) {
@@ -1101,6 +1102,10 @@ static TargetTypeInfo getTargetTypeInfo(const TargetExtType *Ty) {
     return TargetTypeInfo(PointerType::getUnqual(C), TargetExtType::HasZeroInit,
                           TargetExtType::CanBeGlobal,
                           TargetExtType::CanBeLocal);
+  // A non-nullable reference has no default value, so it can neither be
+  // zero-initialized nor live in a global.
+  if (Name == "wasm.externref.nonnull")
+    return TargetTypeInfo(PointerType::getUnqual(C), TargetExtType::CanBeLocal);
 
   return TargetTypeInfo(Type::getVoidTy(C));
 }
