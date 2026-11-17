@@ -15,7 +15,9 @@
 #ifndef LLVM_LIB_TARGET_WEBASSEMBLY_UTILS_WEBASSEMBLYUTILITIES_H
 #define LLVM_LIB_TARGET_WEBASSEMBLY_UTILS_WEBASSEMBLYUTILITIES_H
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/Wasm.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/Support/CommandLine.h"
 #include <algorithm>
@@ -110,6 +112,14 @@ template <typename RangeT> void moveToFront(RangeT &Range, size_t Idx) {
 /// arrives in local 0, which must hold the async context for the whole
 /// function.
 Register getSwiftAsyncArgReg(const MachineFunction &MF);
+
+/// Encode a signature as the immediate that stands in for a type index operand
+/// until WebAssemblyMCInstLower replaces it.
+APInt encodeFunctionSignature(ArrayRef<wasm::ValType> Returns,
+                              ArrayRef<wasm::ValType> Params);
+void decodeFunctionSignature(const APInt &Sig,
+                             SmallVectorImpl<wasm::ValType> &Returns,
+                             SmallVectorImpl<wasm::ValType> &Params);
 
 } // end namespace WebAssembly
 

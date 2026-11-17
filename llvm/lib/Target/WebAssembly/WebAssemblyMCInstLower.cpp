@@ -179,29 +179,9 @@ MCOperand WebAssemblyMCInstLower::lowerTypeIndexOperand(
 
 MCOperand
 WebAssemblyMCInstLower::lowerEncodedFunctionSignature(const APInt &Sig) const {
-  // For APInt a word is 64 bits on all architectures, see definition in APInt.h
-  auto NumWords = Sig.getNumWords();
   SmallVector<wasm::ValType, 4> Params;
   SmallVector<wasm::ValType, 2> Returns;
-
-  int Idx = NumWords;
-  auto GetWord = [&Idx, &Sig]() {
-    Idx--;
-    return Sig.extractBitsAsZExtValue(64, 64 * Idx);
-  };
-  // Annoying special case: if getSignificantBits() <= 64 then InstrEmitter will
-  // emit an Imm instead of a CImm. It simplifies WebAssemblyMCInstLower if we
-  // always emit a CImm. So xor NParams with 0x7ffffff to ensure
-  // getSignificantBits() > 64
-  // See encodeFunctionSignature in WebAssemblyISelDAGtoDAG.cpp
-  int NReturns = GetWord() ^ 0x7ffffff;
-  for (int I = 0; I < NReturns; I++) {
-    Returns.push_back(wasm::ValType::Kind(GetWord()));
-  }
-  int NParams = GetWord();
-  for (int I = 0; I < NParams; I++) {
-    Params.push_back(wasm::ValType::Kind(GetWord()));
-  }
+  WebAssembly::decodeFunctionSignature(Sig, Returns, Params);
   return lowerTypeIndexOperand(std::move(Returns), std::move(Params));
 }
 
