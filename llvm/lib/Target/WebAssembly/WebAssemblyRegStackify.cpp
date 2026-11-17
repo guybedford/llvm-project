@@ -907,6 +907,15 @@ static bool regStackify(MachineFunction &MF, bool Optimize,
         if (WebAssembly::isArgument(DefI->getOpcode()))
           continue;
 
+        // An IMPLICIT_DEF on the stack has to become a constant, which
+        // reference types don't have. Left alone it becomes a local that is
+        // never set, which is a null reference.
+        const TargetRegisterClass *RC = MRI.getRegClass(Reg);
+        if (DefI->isImplicitDef() && (RC == &WebAssembly::FUNCREFRegClass ||
+                                      RC == &WebAssembly::EXTERNREFRegClass ||
+                                      RC == &WebAssembly::EXNREFRegClass))
+          continue;
+
         MachineOperand *Def =
             DefI->findRegisterDefOperand(Reg, /*TRI=*/nullptr);
         assert(Def != nullptr);
