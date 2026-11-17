@@ -18,6 +18,12 @@
 
 namespace llvm {
 
+namespace wasm {
+inline hash_code hash_value(ValType Ty) {
+  return llvm::hash_value(uint8_t(Ty.getKind()));
+}
+} // end namespace wasm
+
 // Traits for using WasmSignature in a DenseMap.
 template <> struct DenseMapInfo<wasm::WasmSignature, void> {
   static unsigned getHashValue(const wasm::WasmSignature &Sig) {

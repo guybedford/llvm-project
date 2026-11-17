@@ -196,11 +196,11 @@ WebAssemblyMCInstLower::lowerEncodedFunctionSignature(const APInt &Sig) const {
   // See encodeFunctionSignature in WebAssemblyISelDAGtoDAG.cpp
   int NReturns = GetWord() ^ 0x7ffffff;
   for (int I = 0; I < NReturns; I++) {
-    Returns.push_back(static_cast<wasm::ValType>(GetWord()));
+    Returns.push_back(wasm::ValType::Kind(GetWord()));
   }
   int NParams = GetWord();
   for (int I = 0; I < NParams; I++) {
-    Params.push_back(static_cast<wasm::ValType>(GetWord()));
+    Params.push_back(wasm::ValType::Kind(GetWord()));
   }
   return lowerTypeIndexOperand(std::move(Returns), std::move(Params));
 }

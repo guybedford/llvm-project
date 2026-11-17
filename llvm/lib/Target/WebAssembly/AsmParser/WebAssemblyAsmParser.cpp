@@ -569,7 +569,7 @@ public:
     if (BT == WebAssembly::BlockType::Void) {
       TC.setLastSig(wasm::WasmSignature{});
     } else {
-      wasm::WasmSignature Sig({static_cast<wasm::ValType>(BT)}, {});
+      wasm::WasmSignature Sig({static_cast<wasm::ValType::Kind>(BT)}, {});
       TC.setLastSig(Sig);
       NestingStack.back().Sig = Sig;
     }
@@ -747,7 +747,7 @@ public:
         auto Ty = WebAssembly::parseType(Id.getString());
         if (!Ty)
           return error("unknown value type in select operand list: ", Id);
-        Op->TyL.List.push_back(static_cast<uint8_t>(*Ty));
+        Op->TyL.List.push_back(Ty->getKind());
         Op->EndLoc = Id.getEndLoc();
         Parser.Lex();
       }
@@ -1036,7 +1036,8 @@ public:
       auto *WasmSym =
           static_cast<MCSymbolWasm *>(Ctx.getOrCreateSymbol(SymName));
       WasmSym->setType(wasm::WASM_SYMBOL_TYPE_GLOBAL);
-      WasmSym->setGlobalType(wasm::WasmGlobalType{uint8_t(*Type), Mutable});
+      WasmSym->setGlobalType(
+          wasm::WasmGlobalType{uint8_t(Type->getKind()), Mutable});
       // And emit the directive again.
       TOut.emitGlobalType(WasmSym);
       return expect(AsmToken::EndOfStatement, "EOL");

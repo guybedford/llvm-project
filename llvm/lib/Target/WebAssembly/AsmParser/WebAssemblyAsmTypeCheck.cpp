@@ -258,7 +258,7 @@ bool WebAssemblyAsmTypeCheck::getGlobal(SMLoc ErrorLoc,
   auto *WasmSym = static_cast<const MCSymbolWasm *>(&SymRef->getSymbol());
   switch (WasmSym->getType().value_or(wasm::WASM_SYMBOL_TYPE_DATA)) {
   case wasm::WASM_SYMBOL_TYPE_GLOBAL:
-    Type = static_cast<wasm::ValType>(WasmSym->getGlobalType().Type);
+    Type = wasm::ValType::Kind(WasmSym->getGlobalType().Type);
     break;
   case wasm::WASM_SYMBOL_TYPE_FUNCTION:
   case wasm::WASM_SYMBOL_TYPE_DATA:
@@ -288,7 +288,7 @@ bool WebAssemblyAsmTypeCheck::getTable(SMLoc ErrorLoc, const MCOperand &TableOp,
       wasm::WASM_SYMBOL_TYPE_TABLE)
     return typeError(ErrorLoc, StringRef("symbol ") + WasmSym->getName() +
                                    ": missing .tabletype");
-  Type = static_cast<wasm::ValType>(WasmSym->getTableType().ElemType);
+  Type = WasmSym->getTableType().ElemType;
   return false;
 }
 
@@ -642,8 +642,7 @@ bool WebAssemblyAsmTypeCheck::typeCheck(SMLoc ErrorLoc, const MCInst &Inst,
     SmallVector<wasm::ValType, 1> Types;
     Types.reserve(Count);
     for (uint64_t I = 0; I < Count; ++I)
-      Types.push_back(
-          static_cast<wasm::ValType>(Inst.getOperand(1 + I).getImm()));
+      Types.push_back(wasm::ValType::Kind(Inst.getOperand(1 + I).getImm()));
     Error |= popTypes(ErrorLoc, Types);
     Error |= popTypes(ErrorLoc, Types);
     pushTypes(Types);

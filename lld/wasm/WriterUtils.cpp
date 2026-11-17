@@ -20,7 +20,7 @@ using namespace llvm::wasm;
 
 namespace lld {
 std::string toString(ValType type) {
-  switch (type) {
+  switch (type.getKind()) {
   case ValType::I32:
     return "i32";
   case ValType::I64:
@@ -60,7 +60,7 @@ std::string toString(const WasmSignature &sig) {
 
 std::string toString(const WasmGlobalType &type) {
   return (type.Mutable ? "var " : "const ") +
-         toString(static_cast<ValType>(type.Type));
+         toString(ValType::Kind(type.Type));
 }
 
 static std::string toString(const llvm::wasm::WasmLimits &limits) {
@@ -75,8 +75,8 @@ static std::string toString(const llvm::wasm::WasmLimits &limits) {
 }
 
 std::string toString(const WasmTableType &type) {
-  return "type=" + toString(static_cast<ValType>(type.ElemType)) +
-         "; limits=[" + toString(type.Limits) + "]";
+  return "type=" + toString(type.ElemType) + "; limits=[" +
+         toString(type.Limits) + "]";
 }
 
 namespace wasm {
@@ -125,8 +125,7 @@ void writeU64(raw_ostream &os, uint64_t number, const Twine &msg) {
 }
 
 void writeValueType(raw_ostream &os, ValType type, const Twine &msg) {
-  writeU8(os, static_cast<uint8_t>(type),
-          msg + "[type: " + toString(type) + "]");
+  writeU8(os, type.getKind(), msg + "[type: " + toString(type) + "]");
 }
 
 void writeSig(raw_ostream &os, const WasmSignature &sig) {
@@ -207,12 +206,12 @@ void writeLimits(raw_ostream &os, const WasmLimits &limits) {
 
 void writeGlobalType(raw_ostream &os, const WasmGlobalType &type) {
   // TODO: Update WasmGlobalType to use ValType and remove this cast.
-  writeValueType(os, ValType(type.Type), "global type");
+  writeValueType(os, ValType::Kind(type.Type), "global type");
   writeU8(os, type.Mutable, "global mutable");
 }
 
 void writeTableType(raw_ostream &os, const WasmTableType &type) {
-  writeValueType(os, ValType(type.ElemType), "table type");
+  writeValueType(os, type.ElemType, "table type");
   writeLimits(os, type.Limits);
 }
 
