@@ -2385,13 +2385,18 @@ void WebAssemblyCFGStackifyImpl::fixEndsAtEndOfFunction(MachineFunction &MF) {
   if (MFI.getResults().empty())
     return;
 
+  // A block type is either a single byte, which can only name a nullable
+  // reference, or the index of a signature.
+  const Function &F = MF.getFunction();
+  SmallVector<wasm::ValType, 2> Returns;
+  computeLegalValTypes(F, MF.getTarget(), F.getReturnType(), Returns);
+
   // MCInstLower will add the proper types to multivalue signatures based on the
   // function return type
   WebAssembly::BlockType RetType =
-      MFI.getResults().size() > 1
+      Returns.size() > 1 || !Returns.front().isNullable()
           ? WebAssembly::BlockType::Multivalue
-          : WebAssembly::BlockType(
-                WebAssembly::toValType(MFI.getResults().front()).getKind());
+          : WebAssembly::BlockType(Returns.front().getKind());
 
   SmallVector<MachineBasicBlock::reverse_iterator, 4> Worklist;
   Worklist.push_back(MF.rbegin()->rbegin());

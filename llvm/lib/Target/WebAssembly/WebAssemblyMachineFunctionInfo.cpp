@@ -59,16 +59,32 @@ void llvm::computeLegalValueVTs(const Function &F, const TargetMachine &TM,
   computeLegalValueVTs(TLI, F.getContext(), DL, Ty, ValueVTs);
 }
 
-void llvm::computeSignatureVTs(const FunctionType *Ty,
-                               const Function *TargetFunc,
-                               const Function &ContextFunc,
-                               const TargetMachine &TM,
-                               SmallVectorImpl<MVT> &Params,
-                               SmallVectorImpl<MVT> &Results) {
-  computeLegalValueVTs(ContextFunc, TM, Ty->getReturnType(), Results);
+void llvm::computeLegalValTypes(const Function &F, const TargetMachine &TM,
+                                Type *Ty,
+                                SmallVectorImpl<wasm::ValType> &ValTypes) {
+  SmallVector<Type *, 4> Types;
+  ComputeValueTypes(F.getDataLayout(), Ty, Types);
+  for (Type *ValueTy : Types) {
+    SmallVector<MVT, 1> VTs;
+    computeLegalValueVTs(F, TM, ValueTy, VTs);
+    for (MVT VT : VTs) {
+      wasm::ValType ValTy = WebAssembly::toValType(VT);
+      ValTypes.push_back(WebAssembly::isWebAssemblyNonNullRefType(ValueTy)
+                             ? ValTy.asNonNullable()
+                             : ValTy);
+    }
+  }
+}
 
-  const DataLayout &DL = ContextFunc.getDataLayout();
-  MVT PtrVT = MVT::getIntegerVT(DL.getPointerSizeInBits());
+// Legalize appends the types a given IR type is passed as.
+template <typename T, typename LegalizeT>
+static void
+computeSignatureImpl(const FunctionType *Ty, const Function *TargetFunc,
+                     const Function &ContextFunc, const TargetMachine &TM,
+                     T PtrTy, LegalizeT Legalize, SmallVectorImpl<T> &Params,
+                     SmallVectorImpl<T> &Results) {
+  Legalize(Ty->getReturnType(), Results);
+
   if (!WebAssembly::canLowerReturn(
           Results.size(),
           &TM.getSubtarget<WebAssemblySubtarget>(ContextFunc))) {
@@ -77,20 +93,20 @@ void llvm::computeSignatureVTs(const FunctionType *Ty,
     // WebAssemblyTargetLowering::CanLowerReturn). So replace multiple return
     // values with a pointer parameter.
     Results.clear();
-    Params.push_back(PtrVT);
+    Params.push_back(PtrTy);
   }
 
   std::optional<size_t> SwiftAsyncIdx;
   for (auto [I, Param] : enumerate(Ty->params())) {
     if (TargetFunc && TargetFunc->hasParamAttribute(I, Attribute::SwiftAsync))
       SwiftAsyncIdx = Params.size();
-    computeLegalValueVTs(ContextFunc, TM, Param, Params);
+    Legalize(Param, Params);
   }
   // ABI contract: the async context must always be available in local 0.
   if (SwiftAsyncIdx)
     WebAssembly::moveToFront(Params, *SwiftAsyncIdx);
   if (Ty->isVarArg())
-    Params.push_back(PtrVT);
+    Params.push_back(PtrTy);
 
   // For swiftcc and swifttailcc, emit additional swiftself, swifterror, and
   // (for swifttailcc) swiftasync parameters if there aren't. These additional
@@ -99,7 +115,6 @@ void llvm::computeSignatureVTs(const FunctionType *Ty,
 
   if (TargetFunc && (TargetFunc->getCallingConv() == CallingConv::Swift ||
                      TargetFunc->getCallingConv() == CallingConv::SwiftTail)) {
-    MVT PtrVT = MVT::getIntegerVT(DL.getPointerSizeInBits());
     bool HasSwiftErrorArg = false;
     bool HasSwiftSelfArg = false;
     bool HasSwiftAsyncArg = false;
@@ -109,28 +124,61 @@ void llvm::computeSignatureVTs(const FunctionType *Ty,
       HasSwiftAsyncArg |= Arg.hasAttribute(Attribute::SwiftAsync);
     }
     if (!HasSwiftSelfArg)
-      Params.push_back(PtrVT);
+      Params.push_back(PtrTy);
     if (!HasSwiftErrorArg)
-      Params.push_back(PtrVT);
+      Params.push_back(PtrTy);
     if (TargetFunc->getCallingConv() == CallingConv::SwiftTail &&
         !HasSwiftAsyncArg)
-      Params.insert(Params.begin(), PtrVT);
+      Params.insert(Params.begin(), PtrTy);
   }
+}
+
+void llvm::computeSignatureVTs(const FunctionType *Ty,
+                               const Function *TargetFunc,
+                               const Function &ContextFunc,
+                               const TargetMachine &TM,
+                               SmallVectorImpl<MVT> &Params,
+                               SmallVectorImpl<MVT> &Results) {
+  const DataLayout &DL = ContextFunc.getDataLayout();
+  MVT PtrVT = MVT::getIntegerVT(DL.getPointerSizeInBits());
+  computeSignatureImpl(
+      Ty, TargetFunc, ContextFunc, TM, PtrVT,
+      [&](Type *T, SmallVectorImpl<MVT> &VTs) {
+        computeLegalValueVTs(ContextFunc, TM, T, VTs);
+      },
+      Params, Results);
+}
+
+void llvm::computeSignature(const FunctionType *Ty, const Function *TargetFunc,
+                            const Function &ContextFunc,
+                            const TargetMachine &TM,
+                            SmallVectorImpl<wasm::ValType> &Params,
+                            SmallVectorImpl<wasm::ValType> &Results) {
+  const DataLayout &DL = ContextFunc.getDataLayout();
+  wasm::ValType PtrTy =
+      WebAssembly::toValType(MVT::getIntegerVT(DL.getPointerSizeInBits()));
+  computeSignatureImpl(
+      Ty, TargetFunc, ContextFunc, TM, PtrTy,
+      [&](Type *T, SmallVectorImpl<wasm::ValType> &ValTypes) {
+        computeLegalValTypes(ContextFunc, TM, T, ValTypes);
+      },
+      Params, Results);
+}
+
+wasm::WasmSignature *llvm::computeSignature(MCContext &Ctx,
+                                            const FunctionType *Ty,
+                                            const Function *TargetFunc,
+                                            const Function &ContextFunc,
+                                            const TargetMachine &TM) {
+  auto *Sig = Ctx.createWasmSignature();
+  computeSignature(Ty, TargetFunc, ContextFunc, TM, Sig->Params, Sig->Returns);
+  return Sig;
 }
 
 void llvm::valTypesFromMVTs(ArrayRef<MVT> In,
                             SmallVectorImpl<wasm::ValType> &Out) {
   for (MVT Ty : In)
     Out.push_back(WebAssembly::toValType(Ty));
-}
-
-wasm::WasmSignature *
-llvm::signatureFromMVTs(MCContext &Ctx, const SmallVectorImpl<MVT> &Results,
-                        const SmallVectorImpl<MVT> &Params) {
-  auto Sig = Ctx.createWasmSignature();
-  valTypesFromMVTs(Results, Sig->Returns);
-  valTypesFromMVTs(Params, Sig->Params);
-  return Sig;
 }
 
 yaml::WebAssemblyFunctionInfo::WebAssemblyFunctionInfo(

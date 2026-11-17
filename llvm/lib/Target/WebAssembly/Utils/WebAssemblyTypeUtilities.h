@@ -26,10 +26,17 @@ namespace llvm {
 
 namespace WebAssembly {
 
-/// Return true if this is a WebAssembly Externref Type.
+/// Return true if this is the non-nullable WebAssembly Externref Type.
+inline bool isWebAssemblyNonNullRefType(const Type *Ty) {
+  const TargetExtType *TargetTy = dyn_cast<TargetExtType>(Ty);
+  return TargetTy && TargetTy->getName() == "wasm.externref.nonnull";
+}
+
+/// Return true if this is a WebAssembly Externref Type, nullable or not.
 inline bool isWebAssemblyExternrefType(const Type *Ty) {
   const TargetExtType *TargetTy = dyn_cast<TargetExtType>(Ty);
-  return TargetTy && TargetTy->getName() == "wasm.externref";
+  return (TargetTy && TargetTy->getName() == "wasm.externref") ||
+         isWebAssemblyNonNullRefType(Ty);
 }
 
 /// Return true if this is a WebAssembly Funcref Type.

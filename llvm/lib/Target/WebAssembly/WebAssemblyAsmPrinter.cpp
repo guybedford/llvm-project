@@ -178,6 +178,14 @@ MCSymbolWasm *WebAssemblyAsmPrinter::getMCSymbolForFunction(
           WebAssembly::signatureToString(Sig);
       report_fatal_error(Twine(Msg));
     }
+    auto IsNonNull = [](wasm::ValType Ty) { return !Ty.isNullable(); };
+    if (any_of(Sig->Params, IsNonNull) || any_of(Sig->Returns, IsNonNull)) {
+      std::string Msg = "Emscripten EH/SjLj does not support non-nullable "
+                        "reference types: " +
+                        std::string(F->getName()) + ": " +
+                        WebAssembly::signatureToString(Sig);
+      reportFatalUsageError(Twine(Msg));
+    }
     WasmSym = static_cast<MCSymbolWasm *>(
         GetExternalSymbolSymbol(getEmscriptenInvokeSymbolName(Sig)));
   } else {
@@ -417,14 +425,12 @@ void WebAssemblyAsmPrinter::emitDecls(const Module &M) {
     // information for defined functions (which already have function type
     // info emitted alongside their definition), but this is necessary in
     // order to enable the single-pass WebAssemblyAsmTypeCheck to succeed.
-    SmallVector<MVT, 4> Results;
-    SmallVector<MVT, 4> Params;
-    computeSignatureVTs(F.getFunctionType(), &F, F, TM, Params, Results);
     // At this point these MCSymbols may or may not have been created already
     // and thus also contain a signature, but we need to get the signature
     // anyway here in case it is an invoke that has not yet been created. We
     // will discard it later if it turns out not to be necessary.
-    auto Signature = signatureFromMVTs(OutContext, Results, Params);
+    auto Signature =
+        computeSignature(OutContext, F.getFunctionType(), &F, F, TM);
     bool InvokeDetected = false;
     auto *Sym = getMCSymbolForFunction(&F, Signature, InvokeDetected);
 
@@ -698,11 +704,7 @@ void WebAssemblyAsmPrinter::emitJumpTableInfo() {
 
 void WebAssemblyAsmPrinter::emitFunctionBodyStart() {
   const Function &F = MF->getFunction();
-  SmallVector<MVT, 1> ResultVTs;
-  SmallVector<MVT, 4> ParamVTs;
-  computeSignatureVTs(F.getFunctionType(), &F, F, TM, ParamVTs, ResultVTs);
-
-  auto Signature = signatureFromMVTs(OutContext, ResultVTs, ParamVTs);
+  auto Signature = computeSignature(OutContext, F.getFunctionType(), &F, F, TM);
   auto *WasmSym = static_cast<MCSymbolWasm *>(CurrentFnSym);
   WasmSym->setSignature(Signature);
   WasmSym->setType(wasm::WASM_SYMBOL_TYPE_FUNCTION);

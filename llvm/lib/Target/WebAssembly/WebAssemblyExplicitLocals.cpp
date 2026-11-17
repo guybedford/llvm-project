@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/WebAssemblyMCTargetDesc.h"
+#include "Utils/WebAssemblyTypeUtilities.h"
 #include "WebAssembly.h"
 #include "WebAssemblyDebugValueManager.h"
 #include "WebAssemblyMachineFunctionInfo.h"
@@ -191,6 +192,171 @@ static MVT typeForRegClass(const TargetRegisterClass *RC) {
   llvm_unreachable("unrecognized register class");
 }
 
+// Non-nullable references
+//
+// A (ref extern) is the same kind of value as an externref everywhere in the
+// backend, and the locals holding them are declared as externref, as wasm
+// otherwise requires locals to be assigned before use in a way that follows
+// its block structure. Only signatures tell the two apart, so wasm's type
+// checker has to be shown that a value is not null where it is passed or
+// returned as a (ref extern), unless it comes straight from an instruction
+// producing one.
+
+static bool mentionsNonNullRef(const Type *Ty) {
+  return WebAssembly::isWebAssemblyNonNullRefType(Ty) ||
+         any_of(Ty->subtypes(), mentionsNonNullRef);
+}
+
+/// Get the signature of the callee of MI, if MI is a call to something whose
+/// signature has a (ref extern) in it.
+static bool
+getNonNullRefCalleeSignature(const MachineInstr &MI,
+                             SmallVectorImpl<wasm::ValType> &Params,
+                             SmallVectorImpl<wasm::ValType> &Returns) {
+  if (WebAssembly::isCallIndirect(MI.getOpcode())) {
+    // LowerCall spells out the signature of exactly these calls.
+    const MachineOperand &TypeIndex = MI.getOperand(MI.getNumExplicitDefs());
+    if (!TypeIndex.isCImm())
+      return false;
+    WebAssembly::decodeFunctionSignature(TypeIndex.getCImm()->getValue(),
+                                         Returns, Params);
+    return true;
+  }
+  if (!WebAssembly::isCallDirect(MI.getOpcode()))
+    return false;
+  const MachineOperand &Callee = WebAssembly::getCalleeOp(MI);
+  if (!Callee.isGlobal())
+    return false;
+  // The symbol of an alias has the signature of its aliasee.
+  const auto *F =
+      dyn_cast_or_null<Function>(Callee.getGlobal()->getAliaseeObject());
+  if (!F || !mentionsNonNullRef(F->getFunctionType()))
+    return false;
+  const MachineFunction &MF = *MI.getMF();
+  computeSignature(F->getFunctionType(), F, MF.getFunction(), MF.getTarget(),
+                   Params, Returns);
+  return true;
+}
+
+static bool usesNonNullRefs(const MachineFunction &MF,
+                            ArrayRef<wasm::ValType> FnParams,
+                            ArrayRef<wasm::ValType> FnReturns) {
+  auto IsNonNull = [](wasm::ValType Ty) { return !Ty.isNullable(); };
+  if (any_of(FnParams, IsNonNull) || any_of(FnReturns, IsNonNull))
+    return true;
+  SmallVector<wasm::ValType, 4> Params;
+  SmallVector<wasm::ValType, 2> Returns;
+  for (const MachineBasicBlock &MBB : MF)
+    for (const MachineInstr &MI : MBB)
+      if (getNonNullRefCalleeSignature(MI, Params, Returns))
+        return true;
+  return false;
+}
+
+/// Build a (ref extern) to stand for an undefined value, as the null that an
+/// undefined externref is left as would trap where it is passed on. Returns
+/// its register and sets First to the start of its expression tree.
+static Register buildUndefNonNullRef(MachineBasicBlock &MBB,
+                                     MachineBasicBlock::iterator InsertPt,
+                                     const DebugLoc &DL, MachineInstr *&First) {
+  MachineFunction &MF = *MBB.getParent();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  WebAssemblyFunctionInfo &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
+  const auto *TII = MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+
+  Register Zero = MRI.createVirtualRegister(&WebAssembly::I32RegClass);
+  Register I31 = MRI.createVirtualRegister(&WebAssembly::EXTERNREFRegClass);
+  Register Ref = MRI.createVirtualRegister(&WebAssembly::EXTERNREFRegClass);
+  First = BuildMI(MBB, InsertPt, DL, TII->get(WebAssembly::CONST_I32), Zero)
+              .addImm(0);
+  BuildMI(MBB, InsertPt, DL, TII->get(WebAssembly::REF_I31), I31).addReg(Zero);
+  BuildMI(MBB, InsertPt, DL, TII->get(WebAssembly::EXTERN_CONVERT_ANY), Ref)
+      .addReg(I31);
+  for (Register Reg : {Zero, I31, Ref})
+    MFI.stackifyVReg(MRI, Reg);
+  return Ref;
+}
+
+/// Insert ref.as_non_null where a value that wasm's type checker does not know
+/// to be non-null is passed or returned as a (ref extern).
+static bool insertNonNullChecks(MachineFunction &MF,
+                                ArrayRef<wasm::ValType> FnParams,
+                                ArrayRef<wasm::ValType> FnReturns) {
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  WebAssemblyFunctionInfo &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
+  const auto *TII = MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+
+  auto ProducesNonNullRef = [&](const MachineInstr &Def, Register Reg) {
+    if (Def.getOpcode() == WebAssembly::REF_AS_NON_NULL_EXTERNREF)
+      return true;
+    if (Def.getOpcode() == WebAssembly::LOCAL_GET_EXTERNREF) {
+      // Only the locals of parameters have the type of the signature.
+      uint64_t Local = Def.getOperand(1).getImm();
+      return Local < FnParams.size() && !FnParams[Local].isNullable();
+    }
+    SmallVector<wasm::ValType, 4> Params;
+    SmallVector<wasm::ValType, 2> Returns;
+    if (!getNonNullRefCalleeSignature(Def, Params, Returns))
+      return false;
+    for (auto [I, MO] : enumerate(Def.defs()))
+      if (MO.getReg() == Reg)
+        return I < Returns.size() && !Returns[I].isNullable();
+    llvm_unreachable("Reg is not defined by Def");
+  };
+
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    for (MachineInstr &MI : MBB) {
+      SmallVector<wasm::ValType, 4> Params;
+      SmallVector<wasm::ValType, 2> Returns;
+      ArrayRef<wasm::ValType> Expected;
+      if (MI.getOpcode() == WebAssembly::RETURN)
+        Expected = FnReturns;
+      else if (getNonNullRefCalleeSignature(MI, Params, Returns))
+        Expected = Params;
+
+      // Any register operand left after those of the signature is the callee
+      // of an indirect call.
+      auto ExpectedIt = Expected.begin();
+      for (MachineOperand &MO : MI.explicit_uses()) {
+        if (ExpectedIt == Expected.end())
+          break;
+        if (!MO.isReg())
+          continue;
+        if ((ExpectedIt++)->isNullable())
+          continue;
+
+        // The operands of a call whose type does not match its callee's are
+        // not what the signature says.
+        Register Reg = MO.getReg();
+        if (MRI.getRegClass(Reg) != &WebAssembly::EXTERNREFRegClass)
+          continue;
+
+        MachineInstr *Def = MRI.getUniqueVRegDef(Reg);
+        assert(
+            Def && MFI.isVRegStackified(Reg) &&
+            "WebAssemblyExplicitLocals failed to stackify a register operand");
+        if (ProducesNonNullRef(*Def, Reg))
+          continue;
+
+        // The value is on top of the stack right after it is produced.
+        assert(Def->getNumExplicitDefs() == 1 &&
+               "nullable result of a multivalue instruction used as non-null");
+        Register NewReg =
+            MRI.createVirtualRegister(&WebAssembly::EXTERNREFRegClass);
+        BuildMI(*Def->getParent(), std::next(Def->getIterator()),
+                MI.getDebugLoc(),
+                TII->get(WebAssembly::REF_AS_NON_NULL_EXTERNREF), NewReg)
+            .addReg(Reg);
+        MO.setReg(NewReg);
+        MFI.stackifyVReg(MRI, NewReg);
+        Changed = true;
+      }
+    }
+  }
+  return Changed;
+}
+
 /// Given a MachineOperand of a stackified vreg, return the instruction at the
 /// start of the expression tree.
 static MachineInstr *findStartOfTree(MachineOperand &MO,
@@ -257,6 +423,13 @@ static bool explicitLocals(MachineFunction &MF) {
   Register SwiftAsyncReg = WebAssembly::getSwiftAsyncArgReg(MF);
   bool CopySwiftAsyncArg = SwiftAsyncReg && !MRI.hasOneDef(SwiftAsyncReg);
 
+  const Function &F = MF.getFunction();
+  SmallVector<wasm::ValType, 4> Params;
+  SmallVector<wasm::ValType, 2> Returns;
+  computeSignature(F.getFunctionType(), &F, F, MF.getTarget(), Params, Returns);
+  bool NonNullRefs = MF.getSubtarget<WebAssemblySubtarget>().hasGC() &&
+                     usesNonNullRefs(MF, Params, Returns);
+
   // Handle ARGUMENTS first to ensure that they get the designated numbers.
   for (MachineBasicBlock::iterator I = MF.begin()->begin(),
                                    E = MF.begin()->end();
@@ -267,7 +440,11 @@ static bool explicitLocals(MachineFunction &MF) {
     Register Reg = MI.getOperand(0).getReg();
     assert(!MFI.isVRegStackified(Reg));
     auto Local = static_cast<unsigned>(MI.getOperand(1).getImm());
-    if (Reg == SwiftAsyncReg && CopySwiftAsyncArg) {
+    // Likewise the local of a (ref extern) parameter only accepts non-null
+    // values, which is not known of the other definitions of its register.
+    bool CopyNonNullArg = Local < Params.size() &&
+                          !Params[Local].isNullable() && !MRI.hasOneDef(Reg);
+    if ((Reg == SwiftAsyncReg && CopySwiftAsyncArg) || CopyNonNullArg) {
       const TargetRegisterClass *RC = MRI.getRegClass(Reg);
       Register Tmp = MRI.createVirtualRegister(RC);
       BuildMI(*MI.getParent(), MI, DebugLoc(), TII->get(getLocalGetOpcode(RC)),
@@ -312,6 +489,16 @@ static bool explicitLocals(MachineFunction &MF) {
         continue;
 
       if (MI.getOpcode() == WebAssembly::IMPLICIT_DEF) {
+        Register Reg = MI.getOperand(0).getReg();
+        if (NonNullRefs && !UseEmpty[Reg.virtRegIndex()] &&
+            MRI.getRegClass(Reg) == &WebAssembly::EXTERNREFRegClass) {
+          MachineInstr *First;
+          Register Ref = buildUndefNonNullRef(MBB, MI, MI.getDebugLoc(), First);
+          BuildMI(MBB, MI, MI.getDebugLoc(),
+                  TII->get(WebAssembly::LOCAL_SET_EXTERNREF))
+              .addImm(getLocalId(Reg2Local, MFI, CurLocal, Reg))
+              .addReg(Ref);
+        }
         MI.eraseFromParent();
         Changed = true;
         continue;
@@ -458,9 +645,18 @@ static bool explicitLocals(MachineFunction &MF) {
           continue;
         }
 
+        const TargetRegisterClass *RC = MRI.getRegClass(OldReg);
+        if (MO.isUndef() && NonNullRefs &&
+            RC == &WebAssembly::EXTERNREFRegClass) {
+          MO.setReg(buildUndefNonNullRef(MBB, InsertPt, InsertPt->getDebugLoc(),
+                                         InsertPt));
+          MO.setIsUndef(false);
+          Changed = true;
+          continue;
+        }
+
         // Insert a local.get.
         unsigned LocalId = getLocalId(Reg2Local, MFI, CurLocal, OldReg);
-        const TargetRegisterClass *RC = MRI.getRegClass(OldReg);
         Register NewReg = MRI.createVirtualRegister(RC);
         unsigned Opc = getLocalGetOpcode(RC);
         // Use a InsertPt as our DebugLoc, since MI may be discontinuous from
@@ -485,6 +681,9 @@ static bool explicitLocals(MachineFunction &MF) {
       }
     }
   }
+
+  if (NonNullRefs)
+    Changed |= insertNonNullChecks(MF, Params, Returns);
 
   // Define the locals.
   // TODO: Sort the locals for better compression.

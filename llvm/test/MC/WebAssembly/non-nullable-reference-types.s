@@ -149,15 +149,27 @@ nullable_longhand_local:
     .local (ref null extern), (ref null func)
     end_function
 
+# An i31 reference converted to extern is a reference that is not null.
+i31_as_extern:
+# CHECK: .functype i31_as_extern () -> ((ref extern))
+    .functype i31_as_extern () -> ((ref extern))
+    i32.const 0
+# CHECK: ref.i31 # encoding: [0xfb,0x1c]
+    ref.i31
+# CHECK: extern.convert_any # encoding: [0xfb,0x1b]
+    extern.convert_any
+    ref.as_non_null
+    end_function
+
 ## Non-nullable references are encoded as 0x64 followed by the heap type.
 # BYTES:      Contents of section TYPE:
-# BYTES-NEXT:  0000 1060016f 01646f60 01700164 70600169
+# BYTES-NEXT:  0000 1160016f 01646f60 01700164 70600169
 # BYTES-NEXT:  0010 01646960 036f7069 016f6002 6f6f0164
 # BYTES-NEXT:  0020 6f60057f 64706469 646f7c00 6001646f
 # BYTES-NEXT:  0030 016f6001 6f006001 646f0060 01646f01
 # BYTES-NEXT:  0040 646f6000 01647060 01646f01 64696001
 # BYTES-NEXT:  0050 6f026f64 6960016f 016f6002 646f7f01
-# BYTES-NEXT:  0060 646f6000 00
+# BYTES-NEXT:  0060 646f6000 00600001 646f
 
 # YAML:      - Type:            TYPE
 # YAML-NEXT:   Signatures:
@@ -244,3 +256,7 @@ nullable_longhand_local:
 # YAML-NEXT:     - Index:           15
 # YAML-NEXT:       ParamTypes:      []
 # YAML-NEXT:       ReturnTypes:     []
+# YAML-NEXT:     - Index:           16
+# YAML-NEXT:       ParamTypes:      []
+# YAML-NEXT:       ReturnTypes:
+# YAML-NEXT:         - REF_EXTERN

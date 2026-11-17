@@ -308,7 +308,8 @@ MVT MVT::getVT(Type *Ty, bool HandleUnknown){
     TargetExtType *TargetExtTy = cast<TargetExtType>(Ty);
     if (TargetExtTy->getName() == "aarch64.svcount")
       return MVT(MVT::aarch64svcount);
-    else if (TargetExtTy->getName() == "wasm.externref")
+    else if (TargetExtTy->getName() == "wasm.externref" ||
+             TargetExtTy->getName() == "wasm.externref.nonnull")
       return MVT(MVT::externref);
     else if (TargetExtTy->getName() == "wasm.funcref")
       return MVT(MVT::funcref);

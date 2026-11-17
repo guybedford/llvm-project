@@ -369,6 +369,10 @@ DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
   case IIT_EXTERNREF:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::WasmExternref, 0));
     return;
+  case IIT_EXTERNREF_NONNULL:
+    OutputTable.push_back(
+        IITDescriptor::get(IITDescriptor::WasmNonNullExternref, 0));
+    return;
   case IIT_FUNCREF:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::WasmFuncref, 0));
     return;
@@ -568,7 +572,9 @@ static Type *DecodeFixedType(ArrayRef<Intrinsic::IITDescriptor> &Infos,
   case IITDescriptor::AArch64Svcount:
     return TargetExtType::get(Context, "aarch64.svcount");
   case IITDescriptor::WasmExternref:
-    return TargetExtType::get(Context, "wasm.externref");
+    return Type::getWasm_ExternrefTy(Context);
+  case IITDescriptor::WasmNonNullExternref:
+    return Type::getWasm_ExternrefTy(Context, /*Nullable=*/false);
   case IITDescriptor::WasmFuncref:
     return TargetExtType::get(Context, "wasm.funcref");
   case IITDescriptor::Integer:
@@ -1044,9 +1050,12 @@ matchIntrinsicType(Type *Ty, ArrayRef<Intrinsic::IITDescriptor> &Infos,
                         cast<TargetExtType>(Ty)->getName() == "aarch64.svcount",
                     "aarch64.svcount");
   case IITDescriptor::WasmExternref:
-    return PrintMsg(isa<TargetExtType>(Ty) &&
-                        cast<TargetExtType>(Ty)->getName() == "wasm.externref",
+    return PrintMsg(Ty == Type::getWasm_ExternrefTy(Ty->getContext()),
                     "wasm.externref");
+  case IITDescriptor::WasmNonNullExternref:
+    return PrintMsg(Ty == Type::getWasm_ExternrefTy(Ty->getContext(),
+                                                    /*Nullable=*/false),
+                    "wasm.externref.nonnull");
   case IITDescriptor::WasmFuncref:
     return PrintMsg(isa<TargetExtType>(Ty) &&
                         cast<TargetExtType>(Ty)->getName() == "wasm.funcref",

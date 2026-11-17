@@ -192,6 +192,7 @@ struct IITDescriptor {
     PPCQuad,
     AArch64Svcount,
     WasmExternref,
+    WasmNonNullExternref,
     WasmFuncref,
 
     // Overloaded type.

@@ -38,7 +38,8 @@ multiclass REF_I<WebAssemblyRegClass rc, ValueType vt, string ht> {
   let hasSideEffects = 1 in
   defm REF_AS_NON_NULL_#rc
       : I<(outs rc:$dst), (ins rc:$ref), (outs), (ins),
-          [],
+          !if(!eq(ht, "extern"),
+              [(set rc:$dst, (int_wasm_ref_as_non_null_extern rc:$ref))], []),
           "ref.as_non_null\t$dst, $ref",
           "ref.as_non_null", 0xd4>,
         Requires<[HasGC]>;
@@ -53,6 +54,19 @@ defm REF_CAST_FUNCREF : I<(outs FUNCREF:$res), (ins TypeIndex:$type, FUNCREF:$re
                           (outs), (ins TypeIndex:$type), [],
                           "ref.cast\t$type, $ref", "ref.cast $type", 0xfb16>,
                         Requires<[HasGC]>;
+
+// There is no register class for anyref: the result of ref.i31 is only ever
+// on the stack as the operand of extern.convert_any, which together make a
+// (ref extern) for an undefined value.
+defm REF_I31 : I<(outs EXTERNREF:$dst), (ins I32:$value), (outs), (ins), [],
+                 "ref.i31\t$dst, $value", "ref.i31", 0xfb1c>,
+               Requires<[HasGC]>;
+
+defm EXTERN_CONVERT_ANY : I<(outs EXTERNREF:$dst), (ins EXTERNREF:$ref),
+                            (outs), (ins), [],
+                            "extern.convert_any\t$dst, $ref",
+                            "extern.convert_any", 0xfb1b>,
+                          Requires<[HasGC]>;
 
 defm REF_FUNC : I<(outs FUNCREF:$res), (ins function32_op:$func),
                     (outs), (ins function32_op:$func), [],
