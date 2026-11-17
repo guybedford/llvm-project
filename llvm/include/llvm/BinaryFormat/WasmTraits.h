@@ -20,7 +20,7 @@ namespace llvm {
 
 namespace wasm {
 inline hash_code hash_value(ValType Ty) {
-  return llvm::hash_value(uint8_t(Ty.getKind()));
+  return hash_combine(Ty.getKind(), Ty.isNullable());
 }
 } // end namespace wasm
 

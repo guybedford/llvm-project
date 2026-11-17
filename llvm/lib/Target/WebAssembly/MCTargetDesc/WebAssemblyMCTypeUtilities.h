@@ -45,11 +45,6 @@ enum class BlockType : unsigned {
   Multivalue = 0xffff,
 };
 
-inline bool isRefType(wasm::ValType Type) {
-  return Type == wasm::ValType::EXTERNREF || Type == wasm::ValType::FUNCREF ||
-         Type == wasm::ValType::EXNREF;
-}
-
 // Convert ValType or a list/signature of ValTypes to a string.
 
 // Convert an unsigned integer, which can be among wasm::ValType enum, to its

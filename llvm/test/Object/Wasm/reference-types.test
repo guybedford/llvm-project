@@ -6,24 +6,23 @@
 # RUN: echo -e -n "\x00asm\x01\x00\x00\x00\x01\x11\x01\x60\x05\x63\x6f\x64\x70\x63\x69\x64\x6e\x63\x00\x02\x64\x69\x6f" > %t.wasm
 # RUN: obj2yaml %t.wasm | FileCheck %s
 
-## (ref null ht) is the same type as the htref shorthand. Non-nullable
-## references and references to heap types other than func, extern and exn are
-## not modeled.
+## (ref null ht) is the same type as the htref shorthand. References to heap
+## types other than func, extern and exn are not modeled.
 #      CHECK:  - Type:            TYPE
 # CHECK-NEXT:    Signatures:
 # CHECK-NEXT:      - Index:           0
 # CHECK-NEXT:        ParamTypes:
 # CHECK-NEXT:          - EXTERNREF
-# CHECK-NEXT:          - OTHERREF
+# CHECK-NEXT:          - REF_FUNC
 # CHECK-NEXT:          - EXNREF
 # CHECK-NEXT:          - OTHERREF
 # CHECK-NEXT:          - OTHERREF
 # CHECK-NEXT:        ReturnTypes:
-# CHECK-NEXT:          - OTHERREF
+# CHECK-NEXT:          - REF_EXN
 # CHECK-NEXT:          - EXTERNREF
 
-## The same goes for tables, globals, element segments and locals. The module
-## is:
+## Tables, globals, element segments and locals only model nullable
+## references. The module is:
 ##   (type (func))
 ##   (import "e" "t" (table 0 (ref null func)))
 ##   (import "e" "g" (global (ref null extern)))

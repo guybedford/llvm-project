@@ -198,16 +198,22 @@ static wasm::ValType parseValType(WasmObjectFile::ReadContext &Ctx,
     // Abstract heap types are encoded as negative numbers whose single-byte
     // SLEB128 encoding is the type code.
     uint64_t HeapType = uint64_t(readVarint64(Ctx)) + 0x80;
-    if (Code == wasm::WASM_TYPE_NULLABLE) {
-      switch (HeapType) {
-      case wasm::WASM_TYPE_FUNCREF:
-      case wasm::WASM_TYPE_EXTERNREF:
-      case wasm::WASM_TYPE_EXNREF:
-        return wasm::ValType::Kind(HeapType);
-      }
+    switch (HeapType) {
+    case wasm::WASM_TYPE_FUNCREF:
+    case wasm::WASM_TYPE_EXTERNREF:
+    case wasm::WASM_TYPE_EXNREF:
+      return wasm::ValType(wasm::ValType::Kind(HeapType),
+                           Code == wasm::WASM_TYPE_NULLABLE);
     }
   }
   return wasm::ValType::OTHERREF;
+}
+
+// Non-nullable references are only modeled in function signatures.
+static wasm::ValType parseNullableValType(WasmObjectFile::ReadContext &Ctx,
+                                          uint32_t Code) {
+  wasm::ValType Ty = parseValType(Ctx, Code);
+  return Ty.isNullable() ? Ty : wasm::ValType::OTHERREF;
 }
 
 static Error readInitExpr(wasm::WasmInitExpr &Expr,
@@ -319,7 +325,7 @@ static wasm::WasmLimits readLimits(WasmObjectFile::ReadContext &Ctx) {
 
 static wasm::WasmTableType readTableType(WasmObjectFile::ReadContext &Ctx) {
   wasm::WasmTableType TableType;
-  auto ElemType = parseValType(Ctx, readVaruint32(Ctx));
+  auto ElemType = parseNullableValType(Ctx, readVaruint32(Ctx));
   TableType.ElemType = ElemType;
   TableType.Limits = readLimits(Ctx);
   return TableType;
@@ -1336,7 +1342,7 @@ Error WasmObjectFile::parseImport(ReadContext &Ctx, wasm::WasmImport &Im) {
     break;
   case wasm::WASM_EXTERNAL_GLOBAL:
     NumImportedGlobals++;
-    Im.Global.Type = parseValType(Ctx, readVaruint32(Ctx)).getKind();
+    Im.Global.Type = parseNullableValType(Ctx, readVaruint32(Ctx)).getKind();
     Im.Global.Mutable = readVaruint1(Ctx);
     break;
   case wasm::WASM_EXTERNAL_MEMORY:
@@ -1507,7 +1513,7 @@ Error WasmObjectFile::parseGlobalSection(ReadContext &Ctx) {
     const uint8_t *GlobalStart = Ctx.Ptr;
     Global.Offset = static_cast<uint32_t>(GlobalStart - SectionStart);
     auto GlobalOpcode = readVaruint32(Ctx);
-    Global.Type.Type = parseValType(Ctx, GlobalOpcode).getKind();
+    Global.Type.Type = parseNullableValType(Ctx, GlobalOpcode).getKind();
     Global.Type.Mutable = readVaruint1(Ctx);
     if (Error Err = readInitExpr(Global.InitExpr, Ctx))
       return Err;
@@ -1732,7 +1738,7 @@ Error WasmObjectFile::parseCodeSection(ReadContext &Ctx) {
     while (NumLocalDecls--) {
       wasm::WasmLocalDecl Decl;
       Decl.Count = readVaruint32(Ctx);
-      Decl.Type = parseValType(Ctx, readVaruint32(Ctx)).getKind();
+      Decl.Type = parseNullableValType(Ctx, readVaruint32(Ctx)).getKind();
       Function.Locals.push_back(Decl);
     }
 
@@ -1809,7 +1815,7 @@ Error WasmObjectFile::parseElemSection(ReadContext &Ctx) {
     if (HasElemKind) {
       auto ElemKind = readVaruint32(Ctx);
       if (Segment.Flags & wasm::WASM_ELEM_SEGMENT_HAS_INIT_EXPRS) {
-        Segment.ElemKind = parseValType(Ctx, ElemKind);
+        Segment.ElemKind = parseNullableValType(Ctx, ElemKind);
         if (Segment.ElemKind != wasm::ValType::FUNCREF &&
             Segment.ElemKind != wasm::ValType::EXTERNREF &&
             Segment.ElemKind != wasm::ValType::EXNREF &&
@@ -1824,7 +1830,7 @@ Error WasmObjectFile::parseElemSection(ReadContext &Ctx) {
         Segment.ElemKind = wasm::ValType::FUNCREF;
       }
     } else if (HasElemType) {
-      auto ElemType = parseValType(Ctx, readVaruint32(Ctx));
+      auto ElemType = parseNullableValType(Ctx, readVaruint32(Ctx));
       Segment.ElemKind = ElemType;
     } else {
       Segment.ElemKind = wasm::ValType::FUNCREF;

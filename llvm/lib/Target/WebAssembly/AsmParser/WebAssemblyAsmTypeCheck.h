@@ -64,7 +64,9 @@ class WebAssemblyAsmTypeCheck final {
   bool popAnyType(SMLoc ErrorLoc);
   void pushTypes(ArrayRef<wasm::ValType> Types);
   void pushType(StackType Type) { Stack.push_back(Type); }
-  bool match(StackType TypeA, StackType TypeB);
+  // Returns true if a value of type Actual is not accepted where Expected is
+  // required.
+  bool match(StackType Actual, StackType Expected);
   std::string getTypesString(ArrayRef<wasm::ValType> Types,
                              size_t StartPos = 0);
   std::string getTypesString(ArrayRef<StackType> Types, size_t StartPos = 0);

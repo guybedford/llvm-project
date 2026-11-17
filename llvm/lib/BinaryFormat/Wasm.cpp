@@ -7,6 +7,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/BinaryFormat/Wasm.h"
+#include "llvm/Support/raw_ostream.h"
+
+void llvm::wasm::encodeValType(ValType Ty, raw_ostream &OS) {
+  if (!Ty.isNullable())
+    OS << char(WASM_TYPE_NONNULLABLE);
+  OS << char(Ty.getKind());
+}
 
 llvm::StringRef llvm::wasm::toString(wasm::WasmSymbolType Type) {
   switch (Type) {

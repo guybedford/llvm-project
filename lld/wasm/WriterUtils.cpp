@@ -32,11 +32,11 @@ std::string toString(ValType type) {
   case ValType::V128:
     return "v128";
   case ValType::FUNCREF:
-    return "funcref";
+    return type.isNullable() ? "funcref" : "(ref func)";
   case ValType::EXTERNREF:
-    return "externref";
+    return type.isNullable() ? "externref" : "(ref extern)";
   case ValType::EXNREF:
-    return "exnref";
+    return type.isNullable() ? "exnref" : "(ref exn)";
   case ValType::OTHERREF:
     return "otherref";
   }
@@ -125,7 +125,8 @@ void writeU64(raw_ostream &os, uint64_t number, const Twine &msg) {
 }
 
 void writeValueType(raw_ostream &os, ValType type, const Twine &msg) {
-  writeU8(os, type.getKind(), msg + "[type: " + toString(type) + "]");
+  debugWrite(os.tell(), msg + "[type: " + toString(type) + "]");
+  encodeValType(type, os);
 }
 
 void writeSig(raw_ostream &os, const WasmSignature &sig) {

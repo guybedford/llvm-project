@@ -21,6 +21,8 @@
 #include <optional>
 
 namespace llvm {
+class raw_ostream;
+
 namespace wasm {
 
 // Object file magic string.
@@ -276,7 +278,9 @@ struct WasmObjectHeader {
   uint32_t Version;
 };
 
-// Subset of types that a value can have
+// Subset of types that a value can have. Reference types are modeled as
+// (ref null? ht): Kind is the code of the nullable shorthand (e.g. externref),
+// which is also the code of the abstract heap type ht.
 class ValType {
 public:
   enum Kind : uint8_t {
@@ -289,24 +293,45 @@ public:
     EXTERNREF = WASM_TYPE_EXTERNREF,
     EXNREF = WASM_TYPE_EXNREF,
     // Unmodeled value types include ref types with heap types other than
-    // func, extern or exn, and type-specialized funcrefs
+    // func, extern or exn, and type-specialized funcrefs. Their nullability
+    // is not tracked.
     OTHERREF = 0xff,
   };
 
   ValType() = default;
-  constexpr ValType(Kind K) : K(K) {}
+  constexpr ValType(Kind K, bool Nullable = true)
+      : K(K), Nullable(Nullable || !hasNullability(K)) {}
 
   constexpr Kind getKind() const { return K; }
+  constexpr bool isRef() const { return hasNullability(K) || K == OTHERREF; }
+  // Always true for non-reference types and for OTHERREF.
+  constexpr bool isNullable() const { return Nullable; }
+  constexpr ValType asNonNullable() const { return ValType(K, false); }
+
+  // An integer holding the bytes of the binary encoding: the type code, or
+  // the heap type code with WASM_TYPE_NONNULLABLE in the next byte.
+  constexpr uint32_t getRawEncoding() const {
+    return Nullable ? K : WASM_TYPE_NONNULLABLE << 8 | K;
+  }
+  static constexpr ValType getFromRawEncoding(uint32_t Encoding) {
+    return ValType(Kind(Encoding & 0xff),
+                   Encoding >> 8 != WASM_TYPE_NONNULLABLE);
+  }
 
   friend constexpr bool operator==(ValType LHS, ValType RHS) {
-    return LHS.K == RHS.K;
+    return LHS.K == RHS.K && LHS.Nullable == RHS.Nullable;
   }
   friend constexpr bool operator!=(ValType LHS, ValType RHS) {
     return !(LHS == RHS);
   }
 
 private:
+  static constexpr bool hasNullability(Kind K) {
+    return K == FUNCREF || K == EXTERNREF || K == EXNREF;
+  }
+
   Kind K;
+  bool Nullable;
 };
 
 struct WasmDylinkImportInfo {
@@ -588,6 +613,9 @@ inline bool operator==(const WasmLimits &LHS, const WasmLimits &RHS) {
 inline bool operator==(const WasmTableType &LHS, const WasmTableType &RHS) {
   return LHS.ElemType == RHS.ElemType && LHS.Limits == RHS.Limits;
 }
+
+// Write the binary encoding of a value type.
+LLVM_ABI void encodeValType(ValType Ty, raw_ostream &OS);
 
 LLVM_ABI llvm::StringRef toString(WasmSymbolType type);
 LLVM_ABI llvm::StringRef relocTypetoString(uint32_t type);

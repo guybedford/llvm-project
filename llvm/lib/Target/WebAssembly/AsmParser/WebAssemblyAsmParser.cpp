@@ -447,13 +447,44 @@ public:
     return StringRef();
   }
 
-  bool parseRegTypeList(SmallVectorImpl<wasm::ValType> &Types) {
-    while (Lexer.is(AsmToken::Identifier)) {
-      auto Type = WebAssembly::parseType(Lexer.getTok().getString());
-      if (!Type)
-        return error("unknown type: ", Lexer.getTok());
-      Types.push_back(*Type);
+  // Parse "(ref null? heaptype)".
+  bool parseRefType(wasm::ValType &Type) {
+    if (expect(AsmToken::LParen, "("))
+      return true;
+    if (!Lexer.is(AsmToken::Identifier) || Lexer.getTok().getString() != "ref")
+      return error("Expected ref, instead got: ", Lexer.getTok());
+    Parser.Lex();
+    bool Nullable =
+        Lexer.is(AsmToken::Identifier) && Lexer.getTok().getString() == "null";
+    if (Nullable)
       Parser.Lex();
+    auto Kind = StringSwitch<std::optional<wasm::ValType::Kind>>(
+                    Lexer.getTok().getString())
+                    .Case("func", wasm::ValType::FUNCREF)
+                    .Case("extern", wasm::ValType::EXTERNREF)
+                    .Case("exn", wasm::ValType::EXNREF)
+                    .Default(std::nullopt);
+    if (!Lexer.is(AsmToken::Identifier) || !Kind)
+      return error("unknown heap type: ", Lexer.getTok());
+    Parser.Lex();
+    Type = wasm::ValType(*Kind, Nullable);
+    return expect(AsmToken::RParen, ")");
+  }
+
+  bool parseRegTypeList(SmallVectorImpl<wasm::ValType> &Types) {
+    while (Lexer.is(AsmToken::Identifier) || Lexer.is(AsmToken::LParen)) {
+      if (Lexer.is(AsmToken::LParen)) {
+        wasm::ValType Type;
+        if (parseRefType(Type))
+          return true;
+        Types.push_back(Type);
+      } else {
+        auto Type = WebAssembly::parseType(Lexer.getTok().getString());
+        if (!Type)
+          return error("unknown type: ", Lexer.getTok());
+        Types.push_back(*Type);
+        Parser.Lex();
+      }
       if (!isNext(AsmToken::Comma))
         break;
     }
@@ -1190,8 +1221,12 @@ public:
         return error(".local directive should follow the start of a function: ",
                      Lexer.getTok());
       SmallVector<wasm::ValType, 4> Locals;
+      SMLoc TypesLoc = Lexer.getLoc();
       if (parseRegTypeList(Locals))
         return ParseStatus::Failure;
+      if (!all_of(Locals, [](wasm::ValType Ty) { return Ty.isNullable(); }))
+        return error("non-nullable reference types are not supported in .local",
+                     TypesLoc);
       TC.localDecl(Locals);
       TOut.emitLocal(Locals);
       CurrentState = FunctionLocals;

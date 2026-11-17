@@ -621,6 +621,13 @@ void ScalarEnumerationTraits<WasmYAML::ValueType>::enumeration(
   ECase(EXNREF);
   ECase(OTHERREF);
 #undef ECase
+#define ECase(X, Y)                                                            \
+  IO.enumCase(Type, #X,                                                        \
+              wasm::ValType(wasm::ValType::Y, false).getRawEncoding());
+  ECase(REF_FUNC, FUNCREF);
+  ECase(REF_EXTERN, EXTERNREF);
+  ECase(REF_EXN, EXNREF);
+#undef ECase
 }
 
 void ScalarEnumerationTraits<WasmYAML::ExportKind>::enumeration(
