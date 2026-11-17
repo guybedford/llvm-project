@@ -34,6 +34,14 @@ multiclass REF_I<WebAssemblyRegClass rc, ValueType vt, string ht> {
           "ref.is_null\t$ref",
           "ref.is_null", 0xd1>,
         Requires<[HasReferenceTypes]>;
+  // Traps on null.
+  let hasSideEffects = 1 in
+  defm REF_AS_NON_NULL_#rc
+      : I<(outs rc:$dst), (ins rc:$ref), (outs), (ins),
+          [],
+          "ref.as_non_null\t$dst, $ref",
+          "ref.as_non_null", 0xd4>,
+        Requires<[HasGC]>;
 }
 
 defm REF_TEST_FUNCREF : I<(outs I32:$res), (ins TypeIndex:$type, FUNCREF:$ref),

@@ -76,6 +76,18 @@ const char *WebAssembly::anyTypeToString(unsigned Type) {
 }
 
 const char *WebAssembly::typeToString(wasm::ValType Type) {
+  if (!Type.isNullable()) {
+    switch (Type.getKind()) {
+    case wasm::ValType::FUNCREF:
+      return "(ref func)";
+    case wasm::ValType::EXTERNREF:
+      return "(ref extern)";
+    case wasm::ValType::EXNREF:
+      return "(ref exn)";
+    default:
+      llvm_unreachable("unexpected non-nullable type");
+    }
+  }
   return anyTypeToString(Type.getKind());
 }
 

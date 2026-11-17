@@ -1,0 +1,49 @@
+# RUN: yaml2obj %s -o %t.wasm
+# RUN: obj2yaml %t.wasm | FileCheck %s
+# RUN: llvm-objdump -s -j TYPE %t.wasm | FileCheck --check-prefix=BYTES %s
+
+## Non-nullable references are encoded as 0x64 followed by the heap type.
+# BYTES:      Contents of section TYPE:
+# BYTES-NEXT:  000e 0260036f 646f6470 02647064 69600164
+# BYTES-NEXT:  001e 690170
+
+--- !WASM
+FileHeader:
+  Version:         0x00000001
+Sections:
+  - Type:            TYPE
+    Signatures:
+      - Index:           0
+        ParamTypes:
+          - EXTERNREF
+          - REF_EXTERN
+          - REF_FUNC
+        ReturnTypes:
+          - REF_FUNC
+          - REF_EXN
+      - Index:           1
+        ParamTypes:
+          - REF_EXN
+        ReturnTypes:
+          - FUNCREF
+...
+# CHECK: --- !WASM
+# CHECK: FileHeader:
+# CHECK:   Version:           0x1
+# CHECK: Sections:
+# CHECK:  - Type:            TYPE
+# CHECK:    Signatures:
+# CHECK:      - Index:           0
+# CHECK:        ParamTypes:
+# CHECK:          - EXTERNREF
+# CHECK:          - REF_EXTERN
+# CHECK:          - REF_FUNC
+# CHECK:        ReturnTypes:
+# CHECK:          - REF_FUNC
+# CHECK:          - REF_EXN
+# CHECK:      - Index:           1
+# CHECK:        ParamTypes:
+# CHECK:          - REF_EXN
+# CHECK:        ReturnTypes:
+# CHECK:          - FUNCREF
+# CHECK: ...

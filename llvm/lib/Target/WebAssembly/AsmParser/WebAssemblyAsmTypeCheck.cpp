@@ -67,23 +67,26 @@ bool WebAssemblyAsmTypeCheck::typeError(SMLoc ErrorLoc, const Twine &Msg) {
   return Parser.Error(ErrorLoc, Msg);
 }
 
-bool WebAssemblyAsmTypeCheck::match(StackType TypeA, StackType TypeB) {
+bool WebAssemblyAsmTypeCheck::match(StackType Actual, StackType Expected) {
   // These should have been filtered out in checkTypes()
-  assert(!std::get_if<Polymorphic>(&TypeA) &&
-         !std::get_if<Polymorphic>(&TypeB));
+  assert(!std::get_if<Polymorphic>(&Actual) &&
+         !std::get_if<Polymorphic>(&Expected));
 
-  if (TypeA == TypeB)
+  if (Actual == Expected)
     return false;
-  if (std::get_if<Any>(&TypeA) || std::get_if<Any>(&TypeB))
+  if (std::get_if<Any>(&Actual) || std::get_if<Any>(&Expected))
     return false;
 
-  if (std::get_if<Ref>(&TypeB))
-    std::swap(TypeA, TypeB);
-  assert(std::get_if<wasm::ValType>(&TypeB));
-  if (std::get_if<Ref>(&TypeA) &&
-      WebAssembly::isRefType(std::get<wasm::ValType>(TypeB)))
-    return false;
-  return true;
+  auto *ActualVT = std::get_if<wasm::ValType>(&Actual);
+  auto *ExpectedVT = std::get_if<wasm::ValType>(&Expected);
+  // Types of the same kind that are not equal differ in nullability: (ref ht)
+  // is a subtype of (ref null ht), but not the other way around.
+  if (ActualVT && ExpectedVT)
+    return ActualVT->getKind() != ExpectedVT->getKind() ||
+           !ExpectedVT->isNullable();
+
+  assert(ActualVT || ExpectedVT);
+  return !(ActualVT ? ActualVT : ExpectedVT)->isRef();
 }
 
 std::string WebAssemblyAsmTypeCheck::getTypesString(ArrayRef<StackType> Types,
@@ -326,18 +329,6 @@ bool WebAssemblyAsmTypeCheck::endOfFunction(SMLoc ErrorLoc, bool ExactMatch) {
   return checkTypes(ErrorLoc, FuncInfo.Sig.Returns, ExactMatch);
 }
 
-// Unlike checkTypes() family, this just compare the equivalence of the two
-// ValType vectors
-static bool compareTypes(ArrayRef<wasm::ValType> TypesA,
-                         ArrayRef<wasm::ValType> TypesB) {
-  if (TypesA.size() != TypesB.size())
-    return true;
-  for (size_t I = 0, E = TypesA.size(); I < E; I++)
-    if (TypesA[I] != TypesB[I])
-      return true;
-  return false;
-}
-
 bool WebAssemblyAsmTypeCheck::checkTryTable(SMLoc ErrorLoc,
                                             const MCInst &Inst) {
   bool Error = false;
@@ -360,7 +351,7 @@ bool WebAssemblyAsmTypeCheck::checkTryTable(SMLoc ErrorLoc,
     }
     if (Opcode == wasm::WASM_OPCODE_CATCH_REF ||
         Opcode == wasm::WASM_OPCODE_CATCH_ALL_REF) {
-      SentTypes.push_back(wasm::ValType::EXNREF);
+      SentTypes.push_back(wasm::ValType(wasm::ValType::EXNREF).asNonNullable());
     }
 
     unsigned Level = Inst.getOperand(OpIdx++).getImm();
@@ -372,7 +363,10 @@ bool WebAssemblyAsmTypeCheck::checkTryTable(SMLoc ErrorLoc,
         DestTypes = DestBlockInfo.Sig.Params;
       else
         DestTypes = DestBlockInfo.Sig.Returns;
-      if (compareTypes(SentTypes, DestTypes)) {
+      bool Mismatch = SentTypes.size() != DestTypes.size();
+      for (size_t J = 0, E = SentTypes.size(); !Mismatch && J < E; J++)
+        Mismatch = match(SentTypes[J], DestTypes[J]);
+      if (Mismatch) {
         std::string ErrorMsg =
             ErrorMsgBase + "type mismatch, catch tag type is " +
             getTypesString(SentTypes) + ", but destination's type is " +
@@ -672,6 +666,24 @@ bool WebAssemblyAsmTypeCheck::typeCheck(SMLoc ErrorLoc, const MCInst &Inst,
   if (Name == "ref.is_null") {
     bool Error = popRefType(ErrorLoc);
     pushType(wasm::ValType::I32);
+    return Error;
+  }
+
+  if (Name == "ref.func") {
+    pushType(wasm::ValType(wasm::ValType::FUNCREF).asNonNullable());
+    return false;
+  }
+
+  if (Name == "ref.as_non_null") {
+    // The result is the non-nullable reference type with the operand's heap
+    // type, if that is known.
+    StackType Result = Ref{};
+    if (Stack.size() > BlockInfoStack.back().StackStartPos)
+      if (auto *Ty = std::get_if<wasm::ValType>(&Stack.back());
+          Ty && Ty->isRef())
+        Result = Ty->asNonNullable();
+    bool Error = popRefType(ErrorLoc);
+    pushType(Result);
     return Error;
   }
 

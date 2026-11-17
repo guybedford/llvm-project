@@ -954,9 +954,9 @@ eh_test:
       block i32
         block
 # CHECK: :[[@LINE+4]]:11: error: try_table: catch index 0: type mismatch, catch tag type is [i32], but destination's type is []
-# CHECK: :[[@LINE+3]]:11: error: try_table: catch index 1: type mismatch, catch tag type is [i32, exnref], but destination's type is [i32]
+# CHECK: :[[@LINE+3]]:11: error: try_table: catch index 1: type mismatch, catch tag type is [i32, (ref exn)], but destination's type is [i32]
 # CHECK: :[[@LINE+2]]:11: error: try_table: catch index 2: type mismatch, catch tag type is [], but destination's type is [i32]
-# CHECK: :[[@LINE+1]]:11: error: try_table: catch index 3: type mismatch, catch tag type is [exnref], but destination's type is [i32]
+# CHECK: :[[@LINE+1]]:11: error: try_table: catch index 3: type mismatch, catch tag type is [(ref exn)], but destination's type is [i32]
           try_table i32 (catch __cpp_exception 0) (catch_ref __cpp_exception 1) (catch_all 2) (catch_all_ref 3)
 # CHECK: :[[@LINE+1]]:11: error: type mismatch, expected [i32] but got []
           end_try_table
@@ -973,9 +973,9 @@ eh_test:
       loop (i32) -> ()
         loop
 # CHECK: :[[@LINE+4]]:11: error: try_table: catch index 0: type mismatch, catch tag type is [i32], but destination's type is []
-# CHECK: :[[@LINE+3]]:11: error: try_table: catch index 1: type mismatch, catch tag type is [i32, exnref], but destination's type is [i32]
+# CHECK: :[[@LINE+3]]:11: error: try_table: catch index 1: type mismatch, catch tag type is [i32, (ref exn)], but destination's type is [i32]
 # CHECK: :[[@LINE+2]]:11: error: try_table: catch index 2: type mismatch, catch tag type is [], but destination's type is [i32]
-# CHECK: :[[@LINE+1]]:11: error: try_table: catch index 3: type mismatch, catch tag type is [exnref], but destination's type is []
+# CHECK: :[[@LINE+1]]:11: error: try_table: catch index 3: type mismatch, catch tag type is [(ref exn)], but destination's type is []
           try_table (catch __cpp_exception 0) (catch_ref __cpp_exception 1) (catch_all 2) (catch_all_ref 3)
           end_try_table
         end_loop

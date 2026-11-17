@@ -108,6 +108,11 @@ static int writeUint8(raw_ostream &OS, uint8_t Value) {
   return 0;
 }
 
+static int writeValueType(raw_ostream &OS, WasmYAML::ValueType Type) {
+  wasm::encodeValType(wasm::ValType::getFromRawEncoding(Type), OS);
+  return 0;
+}
+
 static int writeStringRef(const StringRef &Str, raw_ostream &OS) {
   encodeULEB128(Str.size(), OS);
   OS << Str;
@@ -422,10 +427,10 @@ void WasmWriter::writeSectionContent(raw_ostream &OS,
     writeUint8(OS, Sig.Form);
     encodeULEB128(Sig.ParamTypes.size(), OS);
     for (auto ParamType : Sig.ParamTypes)
-      writeUint8(OS, ParamType);
+      writeValueType(OS, ParamType);
     encodeULEB128(Sig.ReturnTypes.size(), OS);
     for (auto ReturnType : Sig.ReturnTypes)
-      writeUint8(OS, ReturnType);
+      writeValueType(OS, ReturnType);
   }
 }
 
@@ -442,7 +447,7 @@ void WasmWriter::writeSectionContent(raw_ostream &OS,
       NumImportedFunctions++;
       break;
     case wasm::WASM_EXTERNAL_GLOBAL:
-      writeUint8(OS, Import.GlobalImport.Type);
+      writeValueType(OS, Import.GlobalImport.Type);
       writeUint8(OS, Import.GlobalImport.Mutable);
       NumImportedGlobals++;
       break;
@@ -529,7 +534,7 @@ void WasmWriter::writeSectionContent(raw_ostream &OS,
       return;
     }
     ++ExpectedIndex;
-    writeUint8(OS, Global.Type);
+    writeValueType(OS, Global.Type);
     writeUint8(OS, Global.Mutable);
     writeInitExpr(OS, Global.Init);
   }
@@ -579,7 +584,7 @@ void WasmWriter::writeSectionContent(raw_ostream &OS,
     encodeULEB128(Func.Locals.size(), StringStream);
     for (auto &LocalDecl : Func.Locals) {
       encodeULEB128(LocalDecl.Count, StringStream);
-      writeUint8(StringStream, LocalDecl.Type);
+      writeValueType(StringStream, LocalDecl.Type);
     }
 
     Func.Body.writeAsBinary(StringStream);

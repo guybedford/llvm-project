@@ -26,6 +26,7 @@ WebAssemblyTargetStreamer::WebAssemblyTargetStreamer(MCStreamer &S)
     : MCTargetStreamer(S) {}
 
 void WebAssemblyTargetStreamer::emitValueType(wasm::ValType Type) {
+  assert(Type.isNullable() && "non-nullable locals are not supported");
   Streamer.emitIntValue(Type.getKind(), 1);
 }
 

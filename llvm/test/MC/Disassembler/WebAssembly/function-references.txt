@@ -27,5 +27,8 @@
 # CHECK: ref.cast 127
 0xFB 0x16 0x7F
 
+# CHECK: ref.as_non_null
+0xD4
+
 # CHECK: end
 0x0B
